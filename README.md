@@ -12,6 +12,24 @@
 
 > 下文命令默认在项目根目录（包含 `backend/`、`frontend/` 的目录）执行。
 
+### 下载后首次启动
+
+从 Gitee 克隆到本地：
+
+```powershell
+git clone https://gitee.com/p-jiaxin11111/biji.git
+cd biji
+```
+
+然后依次完成下面 1–4 步：
+
+1. 创建 MySQL 数据库和账号（只需一次）；
+2. 复制 `backend/.env.example` 为 `backend/.env`，按需填写自己的 API Key；
+3. 在 `backend` 安装依赖，执行 Prisma 迁移和种子数据；
+4. 在 `frontend` 安装依赖并构建。
+
+最后执行 `cd backend && npm start`，打开 **http://localhost:3000**，用 `demo / demo1234` 登录。完整命令见下方各步骤。
+
 ### 前置条件
 
 - Node.js 20 或更高版本：`node -v`
