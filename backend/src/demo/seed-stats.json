@@ -1,0 +1,150 @@
+{
+  "work": {
+    "articleCount": 4,
+    "charCount": 871,
+    "chineseChars": 723,
+    "sentenceCount": 32,
+    "avgSentenceLength": 27.2,
+    "sentenceLengthStd": 11.8,
+    "sentenceLengthVariation": 0.4,
+    "shortSentenceRatio": 19,
+    "colloquialism": 0,
+    "formality": 73,
+    "tone": 12,
+    "emotion": 20,
+    "rhetoricalQuestionRate": 0,
+    "metaphorDensity": 0,
+    "personalExperienceRatio": 9,
+    "firstPersonRatio": 9,
+    "highFrequencyWords": [
+      {
+        "word": "上线",
+        "count": 4
+      },
+      {
+        "word": "团队",
+        "count": 3
+      },
+      {
+        "word": "审核",
+        "count": 3
+      },
+      {
+        "word": "数据",
+        "count": 3
+      },
+      {
+        "word": "服务",
+        "count": 3
+      },
+      {
+        "word": "流程",
+        "count": 3
+      },
+      {
+        "word": "下周",
+        "count": 2
+      },
+      {
+        "word": "产品",
+        "count": 2
+      },
+      {
+        "word": "代理",
+        "count": 2
+      },
+      {
+        "word": "保留",
+        "count": 2
+      }
+    ],
+    "punctuation": {
+      "comma": 47,
+      "period": 36,
+      "question": 0,
+      "exclamation": 0,
+      "ellipsis": 0,
+      "dash": 0,
+      "quote": 0,
+      "colon": 1,
+      "enum": 3,
+      "emoji": 0
+    },
+    "punctuationHabit": "以句号和逗号为主，标点使用克制。",
+    "analyzedAt": "2026-10-17T03:53:58.481Z"
+  },
+  "life": {
+    "articleCount": 4,
+    "charCount": 650,
+    "chineseChars": 567,
+    "sentenceCount": 38,
+    "avgSentenceLength": 17.1,
+    "sentenceLengthStd": 8.5,
+    "sentenceLengthVariation": 0.5,
+    "shortSentenceRatio": 34,
+    "colloquialism": 43,
+    "formality": 6,
+    "tone": 66,
+    "emotion": 51,
+    "rhetoricalQuestionRate": 8,
+    "metaphorDensity": 26,
+    "personalExperienceRatio": 55,
+    "firstPersonRatio": 47,
+    "highFrequencyWords": [
+      {
+        "word": "难过",
+        "count": 3
+      },
+      {
+        "word": "回家",
+        "count": 2
+      },
+      {
+        "word": "声音",
+        "count": 2
+      },
+      {
+        "word": "手机",
+        "count": 2
+      },
+      {
+        "word": "拒绝",
+        "count": 2
+      },
+      {
+        "word": "晚上",
+        "count": 2
+      },
+      {
+        "word": "楼下",
+        "count": 2
+      },
+      {
+        "word": "认真",
+        "count": 2
+      },
+      {
+        "word": "试着",
+        "count": 2
+      },
+      {
+        "word": "这次",
+        "count": 2
+      }
+    ],
+    "punctuation": {
+      "comma": 36,
+      "period": 35,
+      "question": 3,
+      "exclamation": 0,
+      "ellipsis": 0,
+      "dash": 0,
+      "quote": 3,
+      "colon": 3,
+      "enum": 0,
+      "emoji": 0
+    },
+    "punctuationHabit": "习惯把对话或原话放进引号。",
+    "analyzedAt": "2026-10-17T03:53:58.483Z"
+  }
+}

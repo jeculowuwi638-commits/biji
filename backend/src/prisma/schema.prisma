@@ -1,0 +1,47 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           Int          @id @default(autoincrement())
+  username     String       @unique
+  passwordHash String
+  createdAt    DateTime     @default(now())
+  profiles     Profile[]
+  generations  Generation[]
+}
+
+model Profile {
+  id          Int          @id @default(autoincrement())
+  userId      Int
+  name        String
+  stats       Json
+  semantic    Json
+  texts       Json?
+  createdAt   DateTime     @default(now())
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  generations Generation[]
+
+  @@index([userId])
+}
+
+model Generation {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  profileId Int?
+  topic     String   @db.Text
+  platform  String   @db.VarChar(32)
+  tuning    Json?
+  content   String   @db.LongText
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  profile   Profile? @relation(fields: [profileId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([profileId])
+}
