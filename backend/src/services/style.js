@@ -418,9 +418,9 @@ async function extractSemantic(texts) {
   const prompt = buildSemanticPrompt(texts);
   let response;
   try {
-    response = await llm.chat({ ...prompt, label: 'profile-semantic' });
+    response = await llm.chat({ ...prompt, label: 'profile-semantic', cache: true });
   } catch (error) {
-    if (error.code === 'DEMO_NO_CACHE') throw error;
+    if (error.code === 'LLM_NOT_CONFIGURED') throw error;
     throw new AppError(502, 'LLM_ERROR', '语义分析失败，请稍后重试');
   }
 

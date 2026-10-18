@@ -155,7 +155,7 @@
         <el-icon><InfoFilled /></el-icon>
         <p>
           原文只保存在本机数据库中，用于后续增量更新，不会用于训练模型或公开分享。
-          每次追加都会重新做一次语义分析；未配置 LLM_API_KEY 时，只有预置演示追加可用，自定义文章请先配置 Key。
+          每次追加都会重新做一次语义分析，需要配置 LLM_API_KEY。
         </p>
       </div>
     </template>
@@ -249,7 +249,7 @@ function fillDemoAppend() {
   if (!demoAppendTexts.value.length) return;
   articles.value = demoAppendTexts.value.slice(0, MAX_APPEND_ARTICLES);
   errorInfo.value = null;
-  ElMessage.success('已填入演示追加文章，可直接更新档案');
+  ElMessage.success('已填入演示追加文章');
 }
 
 function addArticle() {
@@ -322,14 +322,6 @@ function close() {
 }
 
 function showError(error) {
-  if (error.code === 'DEMO_NO_CACHE') {
-    errorInfo.value = {
-      title: '演示模式：这次追加没有预置缓存',
-      message:
-        '当前未配置 LLM_API_KEY，追加任意新语料都需要调用一次语义模型。请在 backend/.env 中配置 API Key 并重启服务后重试。',
-    };
-    return;
-  }
   if (error.code === 'PROFILE_NO_SOURCE') {
     errorInfo.value = {
       title: '这份档案无法增量更新',

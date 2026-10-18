@@ -9,7 +9,7 @@
         </p>
       </div>
       <div class="header-actions">
-        <el-button size="large" @click="createWithDemo">用演示语料试一份</el-button>
+        <el-button size="large" @click="createWithDemo">用示例语料试一份</el-button>
         <el-button type="primary" size="large" @click="router.push({ name: 'profile-create' })">
           <el-icon><Plus /></el-icon>
           新建档案
@@ -69,7 +69,7 @@
         <el-button type="primary" size="large" @click="router.push({ name: 'profile-create' })">
           提取第一份档案
         </el-button>
-        <el-button size="large" @click="createWithDemo">先看看演示语料</el-button>
+        <el-button size="large" @click="createWithDemo">先看看示例语料</el-button>
       </div>
       <div class="empty-hints">
         <span>不需要邮箱</span>

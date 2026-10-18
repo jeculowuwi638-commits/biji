@@ -39,6 +39,8 @@ app.get('/api/health', async (req, res) => {
     llm: llm.isConfigured() ? 'enabled' : 'disabled',
     cacheEntries: cache.entries,
     cacheHits: cache.hits,
+    cacheScope: 'profile-semantic',
+    llmCalls: cache.apiCalls,
     model: llm.isConfigured() ? config.llm.model : null,
     time: new Date().toISOString(),
   });
@@ -98,7 +100,9 @@ if (require.main === module) {
   server = app.listen(config.port, '0.0.0.0', () => {
     console.log(`笔迹 API 已启动：http://localhost:${config.port}`);
     console.log(
-      `LLM：${llm.isConfigured() ? config.llm.model : '未配置 Key，使用演示缓存'} · 缓存条目 ${cache.entries}`
+      llm.isConfigured()
+        ? `LLM：${config.llm.model} · 语义缓存条目 ${cache.entries}（仅档案分析）`
+        : 'LLM：未配置 LLM_API_KEY（生成/改写/档案分析不可用）'
     );
     if (config.jwtSecret === 'dev-secret-change-me') {
       console.warn('提示：当前使用默认 JWT_SECRET，正式演示前可以在 .env 中替换。');

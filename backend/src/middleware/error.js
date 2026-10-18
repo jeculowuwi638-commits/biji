@@ -49,7 +49,7 @@ function errorHandler(err, req, res, next) {
     message = '登录状态已失效，请重新登录';
   }
 
-  if (status >= 500 && !['DEMO_NO_CACHE', 'LLM_ERROR'].includes(code)) {
+  if (status >= 500 && !['LLM_NOT_CONFIGURED', 'LLM_ERROR'].includes(code)) {
     console.error(`[error] ${req.method} ${req.originalUrl}`, err);
   }
 

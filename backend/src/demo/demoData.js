@@ -61,7 +61,7 @@ const LIFE_ARTICLES = [
 说真的，我最近在试着把“其实”删掉。想说难过就说难过，想拒绝就拒绝。句子短一点，人好像也清楚一点。`,
 ];
 
-// 仅用于无 Key 演示：追加到已有档案后，语义分析会命中预置缓存。
+// 演示用追加语料：与 seed 档案组合后，语义分析可命中预热缓存。
 const WORK_APPEND_ARTICLES = [
   `本季度复盘先看结果：新增付费用户 1.2 万，续费率 76%，两项都完成了目标。真正没做好的是交付节奏，三个项目里有两个卡在跨部门评审，平均多等了 4 天。
 
@@ -185,7 +185,7 @@ function getDemoPayload() {
     },
     writing: DEMO_WRITING,
     seedProfiles: [WORK_PROFILE.name, LIFE_PROFILE.name],
-    // 无 Key 时，把这两篇填进「继续投喂」即可命中预置缓存。
+    // 把这两篇填进「继续投喂」可命中预热的语义缓存。
     profileAppend: {
       [WORK_PROFILE.name]: WORK_APPEND_ARTICLES,
       [LIFE_PROFILE.name]: LIFE_APPEND_ARTICLES,

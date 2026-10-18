@@ -3,11 +3,11 @@ const fs = require('node:fs');
 const path = require('node:path');
 const config = require('../config');
 
-class LlmUnavailableError extends Error {
+class LlmNotConfiguredError extends Error {
   constructor(message) {
     super(message);
-    this.name = 'LlmUnavailableError';
-    this.code = 'DEMO_NO_CACHE';
+    this.name = 'LlmNotConfiguredError';
+    this.code = 'LLM_NOT_CONFIGURED';
     this.status = 503;
   }
 }
@@ -57,7 +57,7 @@ function makeCacheKey({ system = '', user = '', temperature = 0.7, model = confi
 }
 
 function isConfigured() {
-  return Boolean(config.llm.apiKey);
+  return Boolean(String(config.llm.apiKey || '').trim());
 }
 
 function getCacheStatus() {
@@ -171,43 +171,50 @@ async function callApi({ system, user, temperature }) {
 /**
  * 全项目唯一的 LLM 出口。
  *
- * 命中缓存 → 毫秒返回（无需 Key）。
- * 未命中且没有 Key → 抛出 DEMO_NO_CACHE，让调用方给出明确的演示提示。
+ * 必须配置 LLM_API_KEY，否则直接抛 LLM_NOT_CONFIGURED。
+ * 缓存是显式开关：只有 cache === true 的调用（档案语义分析）才读写缓存；
+ * 生成和重写默认 cache === false，每次都会真实调用模型。
  */
-async function chat({ system = '', user, temperature = 0.7, label = 'llm' }) {
+async function chat({ system = '', user, temperature = 0.7, label = 'llm', cache: useCache = false }) {
   if (typeof user !== 'string' || !user.trim()) {
     throw new LlmApiError('LLM 请求内容为空', 500);
   }
 
-  loadCache();
-  const key = makeCacheKey({ system, user, temperature });
-
-  if (cache[key] && typeof cache[key].response === 'string') {
-    stats.hits += 1;
-    return {
-      content: cache[key].response,
-      cached: true,
-      key,
-      label,
-    };
-  }
-
-  stats.misses += 1;
-
   if (!isConfigured()) {
-    throw new LlmUnavailableError(
-      '当前处于无 Key 演示模式，这次输入没有命中预置缓存。请使用页面里的示例素材，或在 .env 中配置 LLM_API_KEY。'
+    throw new LlmNotConfiguredError(
+      '服务端未配置 LLM_API_KEY，生成/改写/档案分析暂不可用。请在 backend/.env 配置后重启服务。'
     );
   }
 
+  let key;
+  if (useCache) {
+    loadCache();
+    key = makeCacheKey({ system, user, temperature });
+
+    if (cache[key] && typeof cache[key].response === 'string') {
+      stats.hits += 1;
+      return {
+        content: cache[key].response,
+        cached: true,
+        key,
+        label,
+      };
+    }
+
+    stats.misses += 1;
+  }
+
   const content = await callApi({ system, user, temperature });
-  cache[key] = {
-    response: content,
-    createdAt: new Date().toISOString(),
-    model: config.llm.model,
-    label,
-  };
-  await persistCache();
+
+  if (useCache) {
+    cache[key] = {
+      response: content,
+      createdAt: new Date().toISOString(),
+      model: config.llm.model,
+      label,
+    };
+    await persistCache();
+  }
 
   return {
     content,
@@ -223,6 +230,6 @@ module.exports = {
   isConfigured,
   getCacheStatus,
   loadCache,
-  LlmUnavailableError,
+  LlmNotConfiguredError,
   LlmApiError,
 };

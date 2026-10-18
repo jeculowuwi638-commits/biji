@@ -10,10 +10,6 @@
       </div>
 
       <div class="header-side">
-        <span v-if="isDemoMode" class="demo-badge">
-          <i />
-          演示模式 · 未配置 API Key
-        </span>
         <el-button v-if="demoData" size="small" @click="applyDemo">
           <el-icon><MagicStick /></el-icon>
           载入演示设置
@@ -170,7 +166,7 @@
             {{ generating ? '正在按你的笔迹写…' : '生成这一篇' }}
           </el-button>
           <p class="generate-note">
-            生成会调用一次模型；没有配置 Key 时，只有预置的演示路径可以直接返回。
+            每次生成都会真实调用一次模型；未配置 LLM_API_KEY 时会直接报错，不会返回预置文案。
           </p>
         </section>
       </aside>
@@ -210,10 +206,6 @@
           :closable="false"
         >
           <p class="error-message">{{ errorState.message }}</p>
-          <div v-if="errorState.code === 'DEMO_NO_CACHE' && demoData" class="error-actions">
-            <el-button size="small" @click="applyDemo">载入演示设置</el-button>
-            <span>演示设置对应已预热的生成、检测和重写路径。</span>
-          </div>
         </el-alert>
 
         <section v-if="!content && !generating" class="empty-result paper-card">
@@ -233,11 +225,11 @@
             <span><i class="mono">02</i> 笔迹档案</span>
             <span><i class="mono">03</i> 微调开关</span>
           </div>
-          <div v-if="isDemoMode" class="empty-demo">
+          <div v-if="demoData" class="empty-demo">
             <el-button size="small" type="primary" plain @click="applyDemo">
               一键载入演示设置
             </el-button>
-            <span>演示路径使用「随笔生活」档案，生成 → 检测 → 重写都能离线跑通。</span>
+            <span>示例设置会填入主题与档案；生成和改写需要配置 LLM_API_KEY。</span>
           </div>
         </section>
 
@@ -248,7 +240,6 @@
                 <span class="section-kicker">Draft</span>
                 <div class="result-title-row">
                   <h2>{{ generation?.platformLabel || '生成结果' }}</h2>
-                  <span v-if="generation?.cached" class="cached-tag">演示缓存</span>
                 </div>
                 <div class="result-meta">
                   <span>{{ generation?.profileName || '不使用档案' }}</span>
@@ -318,14 +309,6 @@
             @close="rewriteError = null"
           >
             <p>{{ rewriteError.message }}</p>
-            <el-button
-              v-if="rewriteError.code === 'DEMO_NO_CACHE' && demoData"
-              size="small"
-              class="rewrite-demo-btn"
-              @click="applyDemo"
-            >
-              载入演示设置
-            </el-button>
           </el-alert>
 
           <ScorePanel
@@ -406,7 +389,6 @@ const currentPlatform = computed(() =>
 const generationPlatform = computed(() =>
   platforms.value.find((platform) => platform.key === generation.value?.platform)
 );
-const isDemoMode = computed(() => Boolean(demoData.value && !demoData.value.llm?.configured));
 const wordCount = computed(() => countChars(content.value));
 const paragraphs = computed(() =>
   String(content.value || '')
@@ -475,10 +457,6 @@ async function load() {
     if (preferred && profiles.value.some((profile) => profile.id === preferred)) {
       selectedProfileId.value = preferred;
     }
-    if (demoData.value && isDemoMode.value && !profiles.value.length) {
-      // 演示模式下没有档案时，默认走“无档案”对照组，仍可直接生成。
-      selectedProfileId.value = null;
-    }
   } catch (error) {
     ElMessage.error(error.message || '页面加载失败');
   }
@@ -490,7 +468,6 @@ function applyDemo() {
   topic.value = writing.topic || topic.value;
   selectedPlatform.value = writing.platform || selectedPlatform.value;
   tuning.value = { ...(writing.tuning || tuning.value) };
-  // 演示重写缓存对应“关闭微调”的随笔生活版本，这里保持关闭，确保闭环可离线跑通。
   tuningEnabled.value = false;
 
   const demoName = demoData.value.seedProfiles?.[1] || demoData.value.seedProfiles?.[0];
@@ -505,7 +482,7 @@ function applyDemo() {
 
   errorState.value = null;
   rewriteError.value = null;
-  ElMessage.success('演示设置已载入，直接点击“生成这一篇”即可');
+  ElMessage.success('示例设置已载入');
 }
 
 async function generate() {
@@ -546,22 +523,21 @@ async function generate() {
       profileId: data.profileId ?? null,
       profileName: profileLabel(data.profileId),
       topic: payload.topic,
-      cached: Boolean(data.meta?.cached),
       createdAt: data.createdAt,
     };
     stopStageTicker();
-    ElMessage.success(data.meta?.cached ? '已返回预置演示结果' : '生成完成');
+    ElMessage.success('生成完成');
     await nextTick();
     resultRef.value?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   } catch (error) {
     stopStageTicker();
-    if (error.code === 'DEMO_NO_CACHE') {
+    if (error.code === 'LLM_NOT_CONFIGURED') {
       errorState.value = {
         code: error.code,
-        title: '演示模式：这条路径没有预置缓存',
+        title: '尚未配置模型 API Key',
         message:
           error.message ||
-          '当前未配置 LLM_API_KEY，只有预置的演示路径可以直接生成。可以载入演示设置，或配置 Key 后重试。',
+          '请在 backend/.env 中配置 LLM_API_KEY 并重启后端，再重新生成。',
       };
     } else {
       errorState.value = {
@@ -607,7 +583,6 @@ async function rewrite() {
   rewriting.value = true;
   rewriteError.value = null;
   const beforeContent = content.value;
-  const beforeScore = score.value.score;
 
   try {
     const data = await writingApi.rewrite({
@@ -618,48 +593,50 @@ async function rewrite() {
       topic: generation.value?.topic || topic.value,
     });
 
-    if (rewriteRounds.value === 0) {
-      compare.value = {
-        before: beforeContent,
-        after: '',
-        beforeScore,
-        afterScore: null,
+    // 每次拿到模型响应都计 1 轮（包括未采用），用于限制 API 消耗。
+    rewriteRounds.value += 1;
+
+    if (data.accepted === false) {
+      // 后端已判定候选稿降分，正文与评分都保持原稿。
+      content.value = data.content;
+      score.value = data.score;
+      rewriteError.value = {
+        code: 'REWRITE_NOT_IMPROVED',
+        title: '本轮改写未提升',
+        message: `本轮改写未提升：${data.beforeScore} → ${data.afterScore}，已保留原稿。`,
       };
+      return;
     }
 
     content.value = data.content;
-    rewriteRounds.value += 1;
+    score.value = data.score;
 
-    let nextScore = null;
-    try {
-      const rescored = await writingApi.score({
-        content: data.content,
-        platform: generation.value?.platform || selectedPlatform.value,
-        profileId: generation.value?.profileId ?? 0,
-      });
-      nextScore = rescored.score;
-      score.value = nextScore;
-    } catch (scoreError) {
-      score.value = null;
-      ElMessage.warning(`改写完成，但自动复检失败：${scoreError.message || '请手动重新检测'}`);
-    }
-
-    if (compare.value) {
+    if (!compare.value) {
+      compare.value = {
+        before: beforeContent,
+        after: data.content,
+        beforeScore: data.beforeScore,
+        afterScore: data.afterScore,
+      };
+    } else {
       compare.value = {
         ...compare.value,
         after: data.content,
-        afterScore: nextScore?.score ?? null,
+        afterScore: data.afterScore,
       };
     }
-    ElMessage.success(`第 ${rewriteRounds.value} 轮改写完成`);
+
+    ElMessage.success(
+      `第 ${rewriteRounds.value} 轮改写完成：${data.beforeScore} → ${data.afterScore}`
+    );
   } catch (error) {
-    if (error.code === 'DEMO_NO_CACHE') {
+    if (error.code === 'LLM_NOT_CONFIGURED') {
       rewriteError.value = {
         code: error.code,
-        title: '这条改写路径没有预置缓存',
+        title: '尚未配置模型 API Key',
         message:
           error.message ||
-          '演示模式下，请先载入演示设置，用「随笔生活」档案生成、检测后再重写；或配置 LLM_API_KEY 后重试。',
+          '请在 backend/.env 中配置 LLM_API_KEY 并重启后端，再重新改写。',
       };
     } else {
       rewriteError.value = {
@@ -750,27 +727,6 @@ onBeforeUnmount(stopStageTicker);
   align-items: center;
   gap: 10px;
   flex: none;
-}
-
-.demo-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 9px;
-  border: 1px solid rgba(169, 132, 69, 0.25);
-  border-radius: 3px;
-  background: rgba(169, 132, 69, 0.08);
-  color: var(--gold);
-  font-size: 9px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-}
-
-.demo-badge i {
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: var(--gold);
 }
 
 .write-layout {
@@ -1322,22 +1278,6 @@ onBeforeUnmount(stopStageTicker);
   line-height: 1.7;
 }
 
-.error-actions {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-top: 10px;
-}
-
-.error-actions span {
-  color: var(--muted-soft);
-  font-size: 9.5px;
-}
-
-.rewrite-demo-btn {
-  margin-top: 9px;
-}
-
 .result-card {
   overflow: hidden;
 }
@@ -1361,16 +1301,6 @@ onBeforeUnmount(stopStageTicker);
 .result-title-row h2 {
   font-size: 24px;
   letter-spacing: -0.025em;
-}
-
-.cached-tag {
-  padding: 2px 7px;
-  border: 1px solid rgba(69, 100, 82, 0.2);
-  border-radius: 3px;
-  background: var(--jade-soft);
-  color: var(--jade);
-  font-size: 8px;
-  font-weight: 600;
 }
 
 .result-meta {

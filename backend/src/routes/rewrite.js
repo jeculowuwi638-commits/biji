@@ -3,7 +3,7 @@ const { prisma } = require('../db');
 const { auth } = require('../middleware/auth');
 const { AppError, asyncHandler } = require('../middleware/error');
 const { getPlatform } = require('../services/generate');
-const { rewriteContent } = require('../services/rewrite');
+const { rewriteContent, evaluateRewriteGuard } = require('../services/rewrite');
 
 const router = express.Router();
 router.use(auth);
@@ -53,9 +53,19 @@ router.post(
       topic: req.body?.topic ? String(req.body.topic).slice(0, 5000) : '',
     });
 
+    const guard = evaluateRewriteGuard({
+      originalContent: content,
+      candidateContent: result.content,
+      profile,
+      platform: platformKey,
+    });
+
     res.json({
-      content: result.content,
-      meta: { cached: result.cached },
+      content: guard.content,
+      accepted: guard.accepted,
+      beforeScore: guard.beforeScore,
+      afterScore: guard.afterScore,
+      score: guard.score,
     });
   })
 );

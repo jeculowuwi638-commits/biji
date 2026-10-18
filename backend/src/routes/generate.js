@@ -80,7 +80,6 @@ router.post(
       platform: generation.platform,
       tuning: generation.tuning,
       createdAt: generation.createdAt,
-      meta: { cached: result.cached },
     });
   })
 );

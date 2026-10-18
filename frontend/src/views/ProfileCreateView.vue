@@ -211,14 +211,6 @@
               :closable="false"
             >
               <p class="error-text">{{ errorInfo.message }}</p>
-              <el-button
-                v-if="errorInfo.code === 'DEMO_NO_CACHE'"
-                size="small"
-                class="error-demo-btn"
-                @click="fillDemo"
-              >
-                填入演示语料再试
-              </el-button>
             </el-alert>
           </section>
         </main>
@@ -386,7 +378,7 @@ async function fillDemo() {
     form.name = data.analysis.suggestedName || '演示档案';
     articles.value = demoArticles.slice(0, 10);
     while (articles.value.length < 3) articles.value.push('');
-    ElMessage.success('已填入演示语料，可直接提取');
+    ElMessage.success('已填入演示语料');
   } catch (error) {
     ElMessage.error(error.message || '演示语料加载失败');
   } finally {
@@ -448,19 +440,9 @@ async function submit() {
   } catch (error) {
     window.clearInterval(stageTimer);
     creating.value = false;
-    if (error.code === 'DEMO_NO_CACHE') {
-      errorInfo.value = {
-        code: error.code,
-        title: '演示模式：这段语料没有预置缓存',
-        message:
-          error.message ||
-          '当前未配置 LLM_API_KEY，只有预置的演示语料可以直接提取。可以填入演示语料，或配置 API Key 后重试。',
-      };
-    } else {
-      ElMessage.error(error.message || '档案提取失败，请稍后再试');
-      if (error.message) {
-        errorInfo.value = { code: error.code, title: '没有提取成功', message: error.message };
-      }
+    ElMessage.error(error.message || '档案提取失败，请稍后再试');
+    if (error.message) {
+      errorInfo.value = { code: error.code, title: '没有提取成功', message: error.message };
     }
   }
 }
@@ -718,10 +700,6 @@ onBeforeUnmount(() => {
   margin-top: 4px;
   font-size: 11.5px;
   line-height: 1.7;
-}
-
-.error-demo-btn {
-  margin-top: 9px;
 }
 
 .create-aside {

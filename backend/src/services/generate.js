@@ -159,10 +159,9 @@ function sanitizeOutput(raw) {
 async function generateText(options) {
   const llm = require('./llm');
   const prompt = buildGeneratePrompt(options);
-  const result = await llm.chat({ ...prompt, label: 'generate' });
+  const result = await llm.chat({ ...prompt, label: 'generate', cache: false });
   return {
     content: sanitizeOutput(result.content),
-    cached: result.cached,
   };
 }
 

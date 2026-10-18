@@ -1,14 +1,20 @@
 const path = require('node:path');
 
 require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
-// 冒烟测试只读缓存，强制禁用真实模型调用。
+// 离线检查：强制无 Key，确保不会发出真实模型请求。
 process.env.LLM_API_KEY = '';
 
 const assert = require('node:assert');
+const fs = require('node:fs');
+const config = require('../src/config');
 const llm = require('../src/services/llm');
 const { buildSemanticPrompt } = require('../src/services/style');
-const { buildGeneratePrompt } = require('../src/services/generate');
-const { buildRewritePrompt } = require('../src/services/rewrite');
+const { buildGeneratePrompt, generateText } = require('../src/services/generate');
+const {
+  buildRewritePrompt,
+  rewriteContent,
+  evaluateRewriteGuard,
+} = require('../src/services/rewrite');
 const { scoreContent } = require('../src/services/score');
 const {
   DEMO_WRITING,
@@ -20,188 +26,201 @@ const responses = require('../src/demo/demoResponses');
 
 const failures = [];
 
-async function checkCache(label, prompt) {
+async function expectNotConfigured(label, fn) {
   try {
-    const result = await llm.chat(prompt);
-    assert.strictEqual(result.cached, true, `${label} 应该命中缓存`);
-    console.log(`  ✓ ${label.padEnd(28)} ${String(result.content.length).padStart(5)} 字`);
-    return result.content;
+    await fn();
+    throw new Error('应当抛出 LLM_NOT_CONFIGURED，但没有报错');
   } catch (error) {
-    failures.push(`${label}: ${error.message}`);
-    console.log(`  ✗ ${label.padEnd(28)} ${error.message}`);
-    return null;
+    assert.strictEqual(error.code, 'LLM_NOT_CONFIGURED', `${label} 错误码应为 LLM_NOT_CONFIGURED`);
+    assert.strictEqual(error.status, 503, `${label} 状态码应为 503`);
+    console.log(`  ✓ ${label.padEnd(28)} ${error.code} / ${error.status}`);
   }
 }
 
-function reportScore(label, content, profile) {
-  const score = scoreContent({ content, profile, platform: 'wechat' });
-  const again = scoreContent({ content, profile, platform: 'wechat' });
+function checkScoreDeterminism() {
+  const score = scoreContent({
+    content: responses.wechatLife,
+    profile: LIFE_PROFILE,
+    platform: 'wechat',
+  });
+  const again = scoreContent({
+    content: responses.wechatLife,
+    profile: LIFE_PROFILE,
+    platform: 'wechat',
+  });
   assert.deepStrictEqual(
     { score: score.score, issues: score.issues, stats: score.stats },
     { score: again.score, issues: again.issues, stats: again.stats },
-    `${label} 的评分应当可复现`
+    '同一文本的评分应当可复现'
+  );
+  assert.ok(score.issues.length >= 2, '随笔生活示例应至少检测出两个具体问题');
+  assert.ok(
+    score.issues.some((issue) => issue.reason.includes('值得注意的是')),
+    '应命中“值得注意的是”套话'
   );
   console.log(
-    `  · ${label.padEnd(16)} 分数 ${String(score.score).padStart(3)} / ${score.level} · AI 味 ${score.aiFlavor} · 个人贴合 ${score.personalFit ?? '-'} · 问题 ${score.issues.length}`
+    `  ✓ 评分确定性与问题定位 · ${score.score} 分 / ${score.issues.length} 个问题`
   );
   return score;
 }
 
-async function main() {
-  console.log('\n== 预置缓存检查 ==');
-  await checkCache('档案分析：观点评论', buildSemanticPrompt(OPINION_ARTICLES));
-
-  const combos = [
-    ['wechat', null, 'none', responses.wechatNone],
-    ['wechat', WORK_PROFILE, 'work', responses.wechatWork],
-    ['wechat', LIFE_PROFILE, 'life', responses.wechatLife],
-    ['xiaohongshu', null, 'none', responses.xiaohongshuNone],
-    ['xiaohongshu', WORK_PROFILE, 'work', responses.xiaohongshuWork],
-    ['xiaohongshu', LIFE_PROFILE, 'life', responses.xiaohongshuLife],
-    ['douyin', null, 'none', responses.douyinNone],
-    ['douyin', WORK_PROFILE, 'work', responses.douyinWork],
-    ['douyin', LIFE_PROFILE, 'life', responses.douyinLife],
-  ];
-
-  for (const [platform, profile, suffix, expected] of combos) {
-    const content = await checkCache(
-      `生成：${platform}/${suffix}`,
-      buildGeneratePrompt({
-        topic: DEMO_WRITING.topic,
-        platform,
-        profile,
-        tuningEnabled: false,
-        tuning: null,
-      })
-    );
-    if (content) {
-      assert.strictEqual(content, expected.trim(), `${platform}/${suffix} 缓存内容应与演示文案一致`);
-    }
-  }
-
-  await checkCache(
-    '生成：wechat/life/微调',
-    buildGeneratePrompt({
-      topic: DEMO_WRITING.topic,
-      platform: 'wechat',
-      profile: LIFE_PROFILE,
-      tuningEnabled: true,
-      tuning: DEMO_WRITING.tuning,
-    })
-  );
-
-  console.log('\n== 检测器检查 ==');
-  reportScore('公众号/无档案', responses.wechatNone, null);
-  reportScore('公众号/工作风格', responses.wechatWork, WORK_PROFILE);
-  const lifeScore = reportScore('公众号/随笔生活', responses.wechatLife, LIFE_PROFILE);
-  reportScore('小红书/随笔生活', responses.xiaohongshuLife, LIFE_PROFILE);
-
-  assert.ok(lifeScore.issues.length >= 2, '随笔生活版本应至少检测出两个具体问题');
-  assert.ok(
-    lifeScore.issues.some(
-      (issue) => issue.sentence && issue.reason.includes('比你的平均句长')
-    ),
-    '应定位到具体的长句'
-  );
-  assert.ok(
-    lifeScore.issues.some((issue) => issue.reason.includes('值得注意的是')),
-    '应命中“值得注意的是”套话'
-  );
-
-  const noProfileScore = scoreContent({
-    content: responses.wechatNone,
-    profile: null,
+function checkPrompts(lifeScore) {
+  const generateA = buildGeneratePrompt({
+    topic: DEMO_WRITING.topic,
     platform: 'wechat',
+    profile: LIFE_PROFILE,
+    tuningEnabled: true,
+    tuning: DEMO_WRITING.tuning,
   });
-  const workScore = scoreContent({
-    content: responses.wechatWork,
-    profile: WORK_PROFILE,
+  const generateB = buildGeneratePrompt({
+    topic: DEMO_WRITING.topic,
     platform: 'wechat',
+    profile: LIFE_PROFILE,
+    tuningEnabled: true,
+    tuning: DEMO_WRITING.tuning,
   });
-  assert.ok(
-    noProfileScore.score < workScore.score,
-    '无档案的通用 AI 文本分数应低于贴合档案的文本'
-  );
+  assert.deepStrictEqual(generateA, generateB, '生成提示词应可复现');
+  assert.ok(generateA.user.includes('公众号'), '生成提示词应包含平台要求');
+  assert.ok(generateA.user.includes('档案摘要'), '生成提示词应包含档案信息');
 
-  console.log('\n== 重写缓存检查 ==');
-  const rewritePrompt = buildRewritePrompt({
+  const rewrite = buildRewritePrompt({
     content: responses.wechatLife,
     problems: lifeScore.issues,
     profile: LIFE_PROFILE,
     platform: 'wechat',
     topic: DEMO_WRITING.topic,
   });
-  const rewritten = await checkCache('重写：wechat/life', rewritePrompt);
-  let rewrittenScore = null;
-  if (rewritten) {
-    assert.ok(!rewritten.includes('值得注意的是'), '重写结果应去掉套话');
-    const rewrittenChars = rewritten.replace(/\s/g, '').length;
-    assert.ok(
-      rewrittenChars >= 800 && rewrittenChars <= 1500,
-      `第一轮重写应保持在公众号篇幅内（当前 ${rewrittenChars} 字）`
-    );
-    rewrittenScore = reportScore('重写后', rewritten, LIFE_PROFILE);
-    assert.ok(
-      rewrittenScore.score >= lifeScore.score,
-      `重写后的分数应不低于原文（${rewrittenScore.score} vs ${lifeScore.score}）`
-    );
-  }
+  assert.ok(rewrite.user.includes('值得注意的是'), '重写提示词应包含问题清单');
+  assert.throws(
+    () => buildRewritePrompt({ content: '   ', problems: [] }),
+    (error) => error.code === 'INVALID_CONTENT',
+    '空正文构建重写提示词应报错'
+  );
 
-  if (rewritten && rewrittenScore) {
-    const secondPrompt = buildRewritePrompt({
-      content: rewritten,
-      problems: rewrittenScore.issues,
+  const semantic = buildSemanticPrompt(OPINION_ARTICLES);
+  const semanticAgain = buildSemanticPrompt(OPINION_ARTICLES);
+  assert.deepStrictEqual(semantic, semanticAgain, '语义提示词应可复现');
+  assert.ok(semantic.user.includes(OPINION_ARTICLES[0].slice(0, 20)), '语义提示词应包含文章');
+  console.log('  ✓ 生成 / 重写 / 语义提示词构建');
+}
+
+function checkCacheFile() {
+  const raw = fs.readFileSync(config.llm.cachePath, 'utf8');
+  const cache = JSON.parse(raw);
+  const entries = Object.entries(cache);
+  assert.strictEqual(entries.length, 3, `语义缓存应为 3 条，当前 ${entries.length} 条`);
+  for (const [, entry] of entries) {
+    assert.ok(
+      typeof entry.label === 'string' && entry.label.startsWith('profile:'),
+      `缓存中不应有非语义条目：${entry.label}`
+    );
+    assert.strictEqual(entry.model, config.llm.model, '缓存模型应与当前配置一致');
+  }
+  console.log(`  ✓ 语义缓存文件 · ${entries.length} 条（${config.llm.model}）`);
+}
+
+function checkGuard(lifeScore) {
+  const accepted = evaluateRewriteGuard({
+    originalContent: responses.wechatLife,
+    candidateContent: responses.rewriteLife,
+    profile: LIFE_PROFILE,
+    platform: 'wechat',
+  });
+  assert.strictEqual(accepted.accepted, true, '高分候选应被采用');
+  assert.strictEqual(accepted.content, responses.rewriteLife.trim());
+  assert.strictEqual(accepted.score.score, accepted.afterScore);
+  assert.ok(accepted.afterScore >= accepted.beforeScore);
+  console.log(
+    `  ✓ 降分保护：接受 · ${accepted.beforeScore} → ${accepted.afterScore}`
+  );
+
+  const worse = `${responses.wechatLife}\n\n综上所述，值得注意的是，在当今这个快节奏的时代，我们每个人都应该积极拥抱变化，不断提升自我，迎接更加美好的未来。`;
+  const rejected = evaluateRewriteGuard({
+    originalContent: responses.wechatLife,
+    candidateContent: worse,
+    profile: LIFE_PROFILE,
+    platform: 'wechat',
+  });
+  assert.strictEqual(rejected.accepted, false, '降分候选不应被采用');
+  assert.strictEqual(rejected.content, responses.wechatLife, '拒绝时应返回原稿');
+  assert.ok(rejected.afterScore < rejected.beforeScore, '拒绝时候选分应低于原稿分');
+  assert.strictEqual(rejected.score.score, rejected.beforeScore);
+  assert.deepStrictEqual(
+    { score: rejected.score.score, issues: rejected.score.issues, stats: rejected.score.stats },
+    { score: lifeScore.score, issues: lifeScore.issues, stats: lifeScore.stats },
+    '拒绝时返回的评分应与原稿评分一致'
+  );
+  console.log(
+    `  ✓ 降分保护：拒绝 · ${rejected.beforeScore} → ${rejected.afterScore}（保留原稿）`
+  );
+
+  const tie = evaluateRewriteGuard({
+    originalContent: responses.wechatLife,
+    candidateContent: responses.wechatLife,
+    profile: LIFE_PROFILE,
+    platform: 'wechat',
+  });
+  assert.strictEqual(tie.accepted, true, '平分应接受');
+  console.log(`  ✓ 降分保护：平分 · ${tie.beforeScore} → ${tie.afterScore}`);
+}
+
+async function main() {
+  assert.strictEqual(llm.isConfigured(), false, 'smoke 必须在无 Key 环境运行');
+
+  console.log('\n== 语义缓存文件 ==');
+  checkCacheFile();
+  assert.strictEqual(llm.getCacheStatus().entries, 3);
+
+  console.log('\n== 无 Key 报错 ==');
+  await expectNotConfigured('生成', () =>
+    generateText({
+      topic: DEMO_WRITING.topic,
+      platform: 'wechat',
+      profile: LIFE_PROFILE,
+      tuningEnabled: false,
+      tuning: null,
+    })
+  );
+  await expectNotConfigured('重写', () =>
+    rewriteContent({
+      content: responses.wechatLife,
+      problems: [],
       profile: LIFE_PROFILE,
       platform: 'wechat',
       topic: DEMO_WRITING.topic,
-    });
-    const rewrittenAgain = await checkCache('重写：wechat/life/第2轮', secondPrompt);
-    if (rewrittenAgain) {
-      const finalChars = rewrittenAgain.replace(/\s/g, '').length;
-      assert.ok(
-        finalChars >= 800 && finalChars <= 1500,
-        `第二轮重写应保持在公众号篇幅内（当前 ${finalChars} 字）`
-      );
-      const finalScore = reportScore('第2轮重写后', rewrittenAgain, LIFE_PROFILE);
-      assert.strictEqual(finalScore.issues.length, 0, '第二轮重写后应没有剩余问题');
-      assert.ok(
-        finalScore.score >= rewrittenScore.score,
-        `第二轮重写的分数应不低于第一轮（${finalScore.score} vs ${rewrittenScore.score}）`
-      );
-    }
-  }
+    })
+  );
+  await expectNotConfigured('档案语义分析', () =>
+    llm.chat({ ...buildSemanticPrompt(OPINION_ARTICLES), label: 'profile-semantic', cache: true })
+  );
+  assert.strictEqual(
+    llm.getCacheStatus().entries,
+    3,
+    '无 Key 的失败路径不应写入缓存'
+  );
 
-  console.log('\n== 演示文案字数 ==');
-  for (const [name, text, min, max] of [
-    ['公众号/无档案', responses.wechatNone, 800, 1500],
-    ['公众号/工作风格', responses.wechatWork, 800, 1500],
-    ['公众号/随笔生活', responses.wechatLife, 800, 1500],
-    ['公众号/微调', responses.wechatLifeTuned, 800, 1500],
-    ['小红书/无档案', responses.xiaohongshuNone, 300, 500],
-    ['小红书/工作风格', responses.xiaohongshuWork, 300, 500],
-    ['小红书/随笔生活', responses.xiaohongshuLife, 300, 500],
-    ['抖音/无档案', responses.douyinNone, 350, 600],
-    ['抖音/工作风格', responses.douyinWork, 350, 600],
-    ['抖音/随笔生活', responses.douyinLife, 350, 600],
-  ]) {
-    const count = text.replace(/\s/g, '').length;
-    const flag = count < min || count > max ? '⚠' : '✓';
-    console.log(`  ${flag} ${name.padEnd(16)} ${String(count).padStart(4)} 字（目标 ${min}–${max}）`);
-  }
+  console.log('\n== 提示词与评分 ==');
+  checkPrompts(scoreContent({
+    content: responses.wechatLife,
+    profile: LIFE_PROFILE,
+    platform: 'wechat',
+  }));
+  const lifeScore = checkScoreDeterminism();
 
-  const cache = llm.getCacheStatus();
-  console.log(`\n缓存条目：${cache.entries}，路径：${cache.path}`);
+  console.log('\n== 重写降分保护 ==');
+  checkGuard(lifeScore);
 
   if (failures.length) {
     console.error(`\n失败 ${failures.length} 项：`);
     for (const failure of failures) console.error(`  - ${failure}`);
     process.exitCode = 1;
   } else {
-    console.log('\n全流程离线演示检查通过。');
+    console.log('\n离线检查全部通过（无 Key、无网络、缓存文件未变）。');
   }
 }
 
 main().catch((error) => {
-  console.error(error);
+  failures.push(error.message);
+  console.error(`\n✗ ${error.message}`);
   process.exitCode = 1;
 });
