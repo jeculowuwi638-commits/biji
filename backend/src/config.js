@@ -11,7 +11,7 @@ const config = {
   port: num(process.env.PORT, 3000),
   nodeEnv: process.env.NODE_ENV || 'development',
   jwtSecret: process.env.JWT_SECRET || 'dev-secret-change-me',
-  jwtExpiresIn: process.env.JWT_EXPIRES_IN || '7d',
+  jwtExpiresIn: process.env.JWT_EXPIRES_IN || '2.5h',
   frontendDist: path.resolve(backendRoot, '../frontend/dist'),
   llm: {
     baseUrl: (process.env.LLM_BASE_URL || 'https://api.deepseek.com/v1').replace(/\/+$/, ''),

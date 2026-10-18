@@ -353,7 +353,7 @@ npm run preheat
 │   │   ├── stores/                  # Pinia 认证状态
 │   │   └── api/                     # Axios 封装
 │   └── vite.config.js               # 开发服务器与 /api 代理
-├── docs/ab-test-template.md         # A/B 盲测记录模板（数据待团队填写）
+├── docs/测试数据说明.md              # 测试记录
 └── README.md
 ```
 
@@ -476,10 +476,7 @@ npm run preheat
 - 不做多人协作、SSR、微服务拆分、CI 流水线；
 - 不追求单元测试覆盖率，但提供离线 smoke 检查；交付前后端已通过临时 MySQL 完成真实 HTTP 端到端验证。
 
-另外：
-
 - **本机运行需要 Node.js 20+ 和 MySQL 8。** 换一台机器需要重新安装依赖、建库、迁移和初始化，不能只拷贝 `node_modules`。
-- **A/B 盲测数据尚未提供。** 仓库只提供 [docs/ab-test-template.md](docs/ab-test-template.md) 记录模板，不预填、不编造任何参与者评分或偏好数据。请团队完成盲测后填入。
 
 ---
 
