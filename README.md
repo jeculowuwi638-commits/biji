@@ -10,7 +10,7 @@
 
 项目按**本地 Node.js + MySQL** 运行。首次启动需要创建数据库、配置一次 `backend/.env`，之后直接启动后端即可。生成、重写和档案语义分析都依赖大模型，**必须配置 `LLM_API_KEY`**；未配置时这些接口会明确报错。
 
-> 下文命令默认在项目根目录（包含 `backend/`、`frontend/` 的目录）执行。
+> 下文命令默认在项目根目录（包含 `backend/`、`frontend/` 的目录）执行。项目根目录没有 `package.json`，**依赖必须分别在两个子目录安装**：`cd backend && npm install`、`cd frontend && npm install`。
 
 ### 下载后首次启动
 
@@ -25,8 +25,8 @@ cd biji
 
 1. 创建 MySQL 数据库和账号（只需一次）；
 2. 复制 `backend/.env.example` 为 `backend/.env`，填写自己的 `LLM_API_KEY`；
-3. 在 `backend` 安装依赖，执行 Prisma 迁移和种子数据；
-4. 在 `frontend` 安装依赖并构建。
+3. 在 `backend` 执行 `npm install`，再执行 Prisma 迁移和种子数据；
+4. 在 `frontend` 执行 `npm install` 并构建。
 
 最后执行 `cd backend && npm start`，打开 **http://localhost:3000**，用 `demo / demo1234` 登录。完整命令见下方各步骤。
 
