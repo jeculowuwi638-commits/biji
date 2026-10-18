@@ -147,14 +147,6 @@
           </el-button>
         </el-form>
 
-        <div class="demo-box">
-          <div class="demo-copy">
-            <span class="demo-label">DEMO</span>
-            <p>演示账号 <b>demo</b> / <b>demo1234</b>，含 2 份预置档案。</p>
-          </div>
-          <el-button text type="primary" @click="useDemo">直接登录</el-button>
-        </div>
-
         <p class="form-foot">
           仅使用用户名 + 密码 + JWT。不收集邮箱、手机号，也不需要第三方登录。
         </p>
@@ -211,15 +203,6 @@ function switchMode(next) {
   mode.value = next;
   form.confirm = '';
   formRef.value?.clearValidate();
-}
-
-function useDemo() {
-  mode.value = 'login';
-  form.username = 'demo';
-  form.password = 'demo1234';
-  form.confirm = '';
-  formRef.value?.clearValidate();
-  submit();
 }
 
 async function submit() {
@@ -503,47 +486,6 @@ onMounted(() => {
 
 .submit-icon {
   margin-left: 5px;
-}
-
-.demo-box {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 14px;
-  margin-top: 26px;
-  padding: 13px 15px;
-  border: 1px dashed var(--line-strong);
-  border-radius: 6px;
-  background: rgba(255, 253, 248, 0.46);
-}
-
-.demo-copy {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-}
-
-.demo-label {
-  flex: none;
-  padding: 2px 6px;
-  border-radius: 3px;
-  background: var(--vermilion-soft);
-  color: var(--vermilion);
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-}
-
-.demo-copy p {
-  color: var(--muted);
-  font-size: 11px;
-  line-height: 1.5;
-}
-
-.demo-copy b {
-  color: var(--ink-soft);
-  font-weight: 600;
 }
 
 .form-foot {
