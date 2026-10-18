@@ -21,14 +21,53 @@ git clone https://gitee.com/p-jiaxin11111/biji.git
 cd biji
 ```
 
-然后依次完成下面 1–4 步：
+开始前确认本机已安装 **Node.js 20+** 和 **MySQL 8**，并且 MySQL 服务正在运行（见下方「前置条件」）。
 
-1. 创建 MySQL 数据库和账号（只需一次）；
-2. 复制 `backend/.env.example` 为 `backend/.env`，填写自己的 `LLM_API_KEY`；
-3. 在 `backend` 执行 `npm install`，再执行 Prisma 迁移和种子数据；
-4. 在 `frontend` 执行 `npm install` 并构建。
+然后按顺序执行以下 5 步（第 1 步只需执行一次）：
 
-最后执行 `cd backend && npm start`，打开 **http://localhost:3000**，用 `demo / demo1234` 登录。完整命令见下方各步骤。
+**1. 创建数据库和账号**（需要输入 MySQL root 密码）
+
+```powershell
+& "C:\Program Files\MySQL\MySQL Server 8.0\bin\mysql.exe" -u root -p -e "source backend/scripts/init-db.sql"
+```
+
+**2. 配置后端环境变量**（在 `backend` 目录，填写 `LLM_API_KEY`）
+
+```powershell
+cd backend
+Copy-Item .env.example .env
+notepad .env
+```
+
+确认 `DATABASE_URL=mysql://biji:biji_password@127.0.0.1:3306/biji`。
+
+**3. 安装后端依赖并初始化数据库**
+
+```powershell
+npm install
+npm run prisma:generate
+npm run prisma:migrate
+npm run seed
+```
+
+**4. 安装前端依赖并构建**
+
+```powershell
+cd ../frontend
+npm install
+npm run build
+```
+
+**5. 启动后端**
+
+```powershell
+cd ../backend
+npm start
+```
+
+打开 **http://localhost:3000**，用 `demo / demo1234` 登录。
+
+> 以上命令默认在同一个终端里顺序执行；每一步的详细说明见下文。
 
 ### 前置条件
 
