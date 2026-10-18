@@ -626,9 +626,12 @@ async function rewrite() {
       };
     }
 
-    ElMessage.success(
-      `第 ${rewriteRounds.value} 轮改写完成：${data.beforeScore} → ${data.afterScore}`
-    );
+    const summary = `第 ${rewriteRounds.value} 轮改写完成：${data.beforeScore} → ${data.afterScore}`;
+    if (data.afterScore < data.beforeScore) {
+      ElMessage.warning(`${summary}（小幅下降，已采用）`);
+    } else {
+      ElMessage.success(summary);
+    }
   } catch (error) {
     if (error.code === 'LLM_NOT_CONFIGURED') {
       rewriteError.value = {

@@ -134,6 +134,24 @@ function checkGuard(lifeScore) {
     `  ✓ 降分保护：接受 · ${accepted.beforeScore} → ${accepted.afterScore}`
   );
 
+  // 整篇重写允许 5 分以内的正常波动。
+  const smallDrop = `${responses.wechatLife}\n\n我坐在桌前，看着窗外的路灯一盏一盏亮起来，忽然意识到，所谓把时间还给自己，其实并不是要拒绝所有人，而是学会在必要的时候停下来，听一听自己内心的声音。`;
+  const tolerated = evaluateRewriteGuard({
+    originalContent: responses.wechatLife,
+    candidateContent: smallDrop,
+    profile: LIFE_PROFILE,
+    platform: 'wechat',
+  });
+  assert.strictEqual(tolerated.accepted, true, '降分在 5 分以内的候选应被采用');
+  assert.strictEqual(tolerated.content, smallDrop, '容忍范围内应返回改写稿');
+  assert.ok(
+    tolerated.beforeScore - tolerated.afterScore <= 5,
+    '容忍范围用例的降分应不超过 5 分'
+  );
+  console.log(
+    `  ✓ 降分保护：小幅下降仍采用 · ${tolerated.beforeScore} → ${tolerated.afterScore}`
+  );
+
   const worse = `${responses.wechatLife}\n\n综上所述，值得注意的是，在当今这个快节奏的时代，我们每个人都应该积极拥抱变化，不断提升自我，迎接更加美好的未来。`;
   const rejected = evaluateRewriteGuard({
     originalContent: responses.wechatLife,
@@ -143,7 +161,10 @@ function checkGuard(lifeScore) {
   });
   assert.strictEqual(rejected.accepted, false, '降分候选不应被采用');
   assert.strictEqual(rejected.content, responses.wechatLife, '拒绝时应返回原稿');
-  assert.ok(rejected.afterScore < rejected.beforeScore, '拒绝时候选分应低于原稿分');
+  assert.ok(
+    rejected.afterScore < rejected.beforeScore - 5,
+    '拒绝时候选分应比原稿低超过 5 分'
+  );
   assert.strictEqual(rejected.score.score, rejected.beforeScore);
   assert.deepStrictEqual(
     { score: rejected.score.score, issues: rejected.score.issues, stats: rejected.score.stats },
