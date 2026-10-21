@@ -14,6 +14,7 @@ model User {
   createdAt    DateTime     @default(now())
   profiles     Profile[]
   generations  Generation[]
+  articles     Article[]
 }
 
 model Profile {
@@ -26,6 +27,7 @@ model Profile {
   createdAt   DateTime     @default(now())
   user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   generations Generation[]
+  articles    Article[]
 
   @@index([userId])
 }
@@ -41,6 +43,24 @@ model Generation {
   createdAt DateTime @default(now())
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   profile   Profile? @relation(fields: [profileId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([profileId])
+}
+
+model Article {
+  id          Int      @id @default(autoincrement())
+  userId      Int
+  profileId   Int?
+  title       String   @db.VarChar(120)
+  topic       String   @db.Text
+  platform    String   @db.VarChar(32)
+  profileName String?  @db.VarChar(30)
+  content     String   @db.LongText
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  profile     Profile? @relation(fields: [profileId], references: [id], onDelete: SetNull)
 
   @@index([userId])
   @@index([profileId])

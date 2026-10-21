@@ -418,16 +418,15 @@ async function extractSemantic(texts) {
   const prompt = buildSemanticPrompt(texts);
   let response;
   try {
-    response = await llm.chat({ ...prompt, label: 'profile-semantic', cache: true });
+    response = await llm.chat({ ...prompt, label: 'profile-semantic' });
   } catch (error) {
-    if (error.code === 'LLM_NOT_CONFIGURED') throw error;
+    if (error.code === 'NO_API_KEY') throw error;
     throw new AppError(502, 'LLM_ERROR', '语义分析失败，请稍后重试');
   }
 
   try {
     return {
       semantic: normalizeSemantic(response.content),
-      cached: response.cached,
     };
   } catch {
     throw new AppError(

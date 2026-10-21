@@ -27,14 +27,22 @@
           :class="{ active: route.name === 'write' }"
         >
           <el-icon><EditPen /></el-icon>
-          <span>开始写作</span>
+          <span>写作台</span>
+        </router-link>
+        <router-link
+          to="/articles"
+          class="nav-item"
+          :class="{ active: route.path.startsWith('/articles') }"
+        >
+          <el-icon><Document /></el-icon>
+          <span>我的文章</span>
         </router-link>
       </nav>
 
       <div class="sidebar-foot">
         <div class="sidebar-note">
-          <strong>档案是提取物</strong>
-          <span>结果不可手改，但可以继续投喂文章来更新。</span>
+          <strong>写作台是你的</strong>
+          <span>生成后可以直接改；重新生成的新版本放在侧边，由你决定是否替换。</span>
         </div>
 
         <el-dropdown trigger="click" placement="top-start" @command="handleCommand">

@@ -1,13 +1,10 @@
-const crypto = require('node:crypto');
-const fs = require('node:fs');
-const path = require('node:path');
 const config = require('../config');
 
-class LlmNotConfiguredError extends Error {
-  constructor(message) {
+class NoApiKeyError extends Error {
+  constructor(message = '无 API Key：请在 backend/.env 中配置 LLM_API_KEY 后重启服务。') {
     super(message);
-    this.name = 'LlmNotConfiguredError';
-    this.code = 'LLM_NOT_CONFIGURED';
+    this.name = 'NoApiKeyError';
+    this.code = 'NO_API_KEY';
     this.status = 503;
   }
 }
@@ -22,77 +19,24 @@ class LlmApiError extends Error {
   }
 }
 
-let cache = {};
-let cacheLoaded = false;
-let writeChain = Promise.resolve();
 const stats = {
-  hits: 0,
-  misses: 0,
   apiCalls: 0,
   lastError: null,
 };
-
-function loadCache() {
-  if (cacheLoaded) return;
-  cacheLoaded = true;
-  try {
-    if (fs.existsSync(config.llm.cachePath)) {
-      const raw = fs.readFileSync(config.llm.cachePath, 'utf8');
-      const parsed = raw.trim() ? JSON.parse(raw) : {};
-      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-        cache = parsed;
-      }
-    }
-  } catch (error) {
-    console.warn(`[llm] 缓存读取失败：${error.message}`);
-    cache = {};
-  }
-}
-
-function makeCacheKey({ system = '', user = '', temperature = 0.7, model = config.llm.model }) {
-  return crypto
-    .createHash('md5')
-    .update(`${model}|${temperature}|${system}|${user}`)
-    .digest('hex');
-}
 
 function isConfigured() {
   return Boolean(String(config.llm.apiKey || '').trim());
 }
 
-function getCacheStatus() {
-  loadCache();
-  return {
-    status: Object.keys(cache).length > 0 ? 'ok' : 'empty',
-    entries: Object.keys(cache).length,
-    path: config.llm.cachePath,
-    ...stats,
-  };
-}
-
-async function persistCache() {
-  const target = config.llm.cachePath;
-  const payload = `${JSON.stringify(cache, null, 2)}\n`;
-  writeChain = writeChain.then(async () => {
-    await fs.promises.mkdir(path.dirname(target), { recursive: true });
-    const temp = `${target}.${process.pid}.tmp`;
-    await fs.promises.writeFile(temp, payload, 'utf8');
-    try {
-      await fs.promises.rename(temp, target);
-    } catch {
-      // Windows 上极少数情况下 rename 会因目标文件被占用失败，退化为直接写入。
-      await fs.promises.writeFile(target, payload, 'utf8');
-      await fs.promises.rm(temp, { force: true });
-    }
-  });
-  return writeChain;
+function getStats() {
+  return { ...stats };
 }
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function callApi({ system, user, temperature }) {
+async function callApi({ messages, temperature = 0.7 }) {
   const attempts = Math.max(0, config.llm.retries) + 1;
   let lastError;
 
@@ -105,10 +49,7 @@ async function callApi({ system, user, temperature }) {
         model: config.llm.model,
         temperature,
         stream: false,
-        messages: [
-          { role: 'system', content: system },
-          { role: 'user', content: user },
-        ],
+        messages,
       };
       // DeepSeek V4 默认开启思考模式，写作类任务不需要，关闭后可显著降低延迟与费用。
       if (config.llm.thinking === 'disabled') {
@@ -171,65 +112,52 @@ async function callApi({ system, user, temperature }) {
 /**
  * 全项目唯一的 LLM 出口。
  *
- * 必须配置 LLM_API_KEY，否则直接抛 LLM_NOT_CONFIGURED。
- * 缓存是显式开关：只有 cache === true 的调用（档案语义分析）才读写缓存；
- * 生成和重写默认 cache === false，每次都会真实调用模型。
+ * 必须配置 LLM_API_KEY，否则直接抛 NO_API_KEY。
+ * 这里不保存任何模型响应：生成、档案分析和助手对话每次都会真实调用模型。
  */
-async function chat({ system = '', user, temperature = 0.7, label = 'llm', cache: useCache = false }) {
+async function chat({ system = '', user, temperature = 0.7, label = 'llm' }) {
   if (typeof user !== 'string' || !user.trim()) {
     throw new LlmApiError('LLM 请求内容为空', 500);
   }
 
   if (!isConfigured()) {
-    throw new LlmNotConfiguredError(
-      '服务端未配置 LLM_API_KEY，生成/改写/档案分析暂不可用。请在 backend/.env 配置后重启服务。'
-    );
+    throw new NoApiKeyError();
   }
 
-  let key;
-  if (useCache) {
-    loadCache();
-    key = makeCacheKey({ system, user, temperature });
+  const messages = [];
+  if (system) messages.push({ role: 'system', content: system });
+  messages.push({ role: 'user', content: user });
 
-    if (cache[key] && typeof cache[key].response === 'string') {
-      stats.hits += 1;
-      return {
-        content: cache[key].response,
-        cached: true,
-        key,
-        label,
-      };
-    }
+  const content = await callApi({ messages, temperature });
+  return { content, label };
+}
 
-    stats.misses += 1;
+/**
+ * 多轮对话入口：messages 是已经排好序的 user / assistant 消息。
+ * 助手只携带对话本身，不读取档案、文章或其他项目数据。
+ */
+async function chatMessages({ system = '', messages, temperature = 0.6, label = 'llm' }) {
+  if (!Array.isArray(messages) || !messages.length) {
+    throw new LlmApiError('LLM 对话消息为空', 500);
   }
 
-  const content = await callApi({ system, user, temperature });
-
-  if (useCache) {
-    cache[key] = {
-      response: content,
-      createdAt: new Date().toISOString(),
-      model: config.llm.model,
-      label,
-    };
-    await persistCache();
+  if (!isConfigured()) {
+    throw new NoApiKeyError();
   }
 
-  return {
-    content,
-    cached: false,
-    key,
-    label,
-  };
+  const apiMessages = system
+    ? [{ role: 'system', content: system }, ...messages]
+    : messages;
+
+  const content = await callApi({ messages: apiMessages, temperature });
+  return { content, label };
 }
 
 module.exports = {
   chat,
-  makeCacheKey,
+  chatMessages,
   isConfigured,
-  getCacheStatus,
-  loadCache,
-  LlmNotConfiguredError,
+  getStats,
+  NoApiKeyError,
   LlmApiError,
 };

@@ -122,7 +122,7 @@ router.post(
     }
 
     const stats = analyzeStats(texts);
-    const { semantic, cached } = await extractSemantic(texts);
+    const { semantic } = await extractSemantic(texts);
 
     const profile = await prisma.profile.create({
       data: {
@@ -138,7 +138,6 @@ router.post(
 
     res.status(201).json({
       profile: profileResponse(profile),
-      meta: { cached },
     });
   })
 );
@@ -198,7 +197,7 @@ router.post(
 
     // 合并新旧语料后完整重算两层结果，保证档案仍然来自真实原文。
     const stats = analyzeStats(allTexts);
-    const { semantic, cached } = await extractSemantic(allTexts);
+    const { semantic } = await extractSemantic(allTexts);
 
     const result = await prisma.profile.updateMany({
       where: { id, userId: req.userId },
@@ -223,7 +222,6 @@ router.post(
     res.json({
       profile: profileResponse(updated),
       meta: {
-        cached,
         addedArticles: newTexts.length,
         totalArticles: allTexts.length,
         addedChars: countChars(newTexts),

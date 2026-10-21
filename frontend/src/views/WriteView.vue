@@ -2,10 +2,11 @@
   <div class="page-shell write-page">
     <header class="write-header">
       <div>
-        <p class="eyebrow">创作 · 三要素生成</p>
-        <h1 class="page-title">写什么，用谁的笔迹，<br />要不要微调。</h1>
+        <p class="eyebrow">Writing desk · 写作台</p>
+        <h1 class="page-title">先写出来，<br />再改成你的。</h1>
         <p class="page-subtitle">
-          三要素确定后，笔迹会带着你的档案写；写完之后，再做一次“像不像你”的检测，必要时按问题重写。
+          三要素定下第一稿，正文会直接进入写作台，可以手动增删改。
+          重新生成是一次全新的写作，新版本放在侧边，不会覆盖当前文章；旁边的助手可以随时问。
         </p>
       </div>
 
@@ -13,6 +14,14 @@
         <el-button v-if="demoData" size="small" @click="applyDemo">
           <el-icon><MagicStick /></el-icon>
           载入演示设置
+        </el-button>
+        <el-button size="small" @click="startNew">
+          <el-icon><DocumentAdd /></el-icon>
+          新建文章
+        </el-button>
+        <el-button size="small" @click="router.push({ name: 'articles' })">
+          <el-icon><Document /></el-icon>
+          我的文章
         </el-button>
       </div>
     </header>
@@ -37,7 +46,10 @@
             placeholder="比如：写一件最近发生的小事——我开始把下班后的两个小时留给写作，也拒绝了几场不想去的饭局。写给那些总觉得时间被别人占满的人。"
           />
           <div class="topic-hint">
-            <span>带一点具体场景、对象或情绪，会比一句宽泛的题目更好写。</span>
+            <span>
+              这段只作为提示词，不会写进文章；标题和正文由模型另外生成。
+              带一点具体场景、对象或情绪，会比一句宽泛的题目更好写。
+            </span>
             <el-button
               v-if="demoData"
               text
@@ -160,192 +172,136 @@
             size="large"
             class="generate-btn"
             :loading="generating"
-            @click="generate"
+            @click="leftGenerate"
           >
             <el-icon v-if="!generating"><EditPen /></el-icon>
-            {{ generating ? '正在按你的笔迹写…' : '生成这一篇' }}
+            {{
+              generating
+                ? (content ? '正在生成候选稿…' : '正在按你的笔迹写…')
+                : (content ? '生成侧边候选稿' : '生成这一篇')
+            }}
           </el-button>
           <p class="generate-note">
-            每次生成都会真实调用一次模型；未配置 LLM_API_KEY 时会直接报错，不会返回预置文案。
+            <template v-if="content">
+              写作台已有内容；本次生成会放在侧边，不会覆盖当前文章。
+            </template>
+            <template v-else>
+              每次生成都会真实调用一次模型；未配置 LLM_API_KEY 时会直接报错，不会返回预置文案。
+            </template>
           </p>
         </section>
       </aside>
 
-      <main ref="resultRef" class="result-area">
-        <section v-if="generating" class="generating-card paper-card">
-          <div class="writing-animation">
-            <span class="seal writing-seal">写</span>
-            <span class="writing-line line-one" />
-            <span class="writing-line line-two" />
-            <span class="writing-line line-three" />
-          </div>
-          <p class="eyebrow plain">Composing</p>
-          <h2>正在按你的笔迹落笔</h2>
-          <p class="generating-sub">
-            {{ profileLabel(generationProfileId) }} · {{ platformLabel(selectedPlatform) }}
-          </p>
-          <div class="generation-stages">
-            <span
-              v-for="(stage, index) in generationStages"
-              :key="stage"
-              :class="{ active: index === generationStage, done: index < generationStage }"
-            >
-              <i />
-              {{ stage }}
-            </span>
-          </div>
-          <p class="generating-time">通常需要 10–40 秒，请稍候。</p>
-        </section>
-
-        <el-alert
-          v-if="errorState"
-          class="result-error"
-          :title="errorState.title"
-          type="error"
-          show-icon
-          :closable="false"
-        >
-          <p class="error-message">{{ errorState.message }}</p>
-        </el-alert>
-
-        <section v-if="!content && !generating" class="empty-result paper-card">
-          <div class="empty-mark">
-            <span class="seal empty-seal">笔</span>
-            <span class="empty-ring ring-a" />
-            <span class="empty-ring ring-b" />
-          </div>
-          <p class="eyebrow plain">Waiting for your three elements</p>
-          <h2>先定三件事，再落笔。</h2>
-          <p>
-            写下这次想说什么，选一份笔迹（或不选），决定要不要微调。
-            生成后，右侧会先出现正文，再进入“像不像你”的检测。
-          </p>
-          <div class="empty-steps">
-            <span><i class="mono">01</i> 主题 / 素材</span>
-            <span><i class="mono">02</i> 笔迹档案</span>
-            <span><i class="mono">03</i> 微调开关</span>
-          </div>
-          <div v-if="demoData" class="empty-demo">
-            <el-button size="small" type="primary" plain @click="applyDemo">
-              一键载入演示设置
-            </el-button>
-            <span>示例设置会填入主题与档案；生成和改写需要配置 LLM_API_KEY。</span>
-          </div>
-        </section>
-
-        <template v-if="content && !generating">
-          <section class="result-card paper-card">
-            <header class="result-head">
-              <div>
-                <span class="section-kicker">Draft</span>
-                <div class="result-title-row">
-                  <h2>{{ generation?.platformLabel || '生成结果' }}</h2>
-                </div>
-                <div class="result-meta">
-                  <span>{{ generation?.profileName || '不使用档案' }}</span>
-                  <i />
-                  <span>{{ wordCount }} 字</span>
-                  <i v-if="generationPlatform" />
-                  <span v-if="generationPlatform">
-                    目标 {{ generationPlatform.minChars }}–{{ generationPlatform.maxChars }} 字
-                  </span>
-                  <i />
-                  <span>{{ formatDateTime(generation?.createdAt) }}</span>
-                </div>
-              </div>
-              <div class="result-actions">
-                <el-button size="small" @click="copyContent">
-                  <el-icon><CopyDocument /></el-icon>
-                  复制
-                </el-button>
-                <el-button
-                  v-if="!score"
-                  type="primary"
-                  size="small"
-                  :loading="scoring"
-                  @click="runScore"
-                >
-                  <el-icon v-if="!scoring"><Aim /></el-icon>
-                  检测像不像你
-                </el-button>
-                <el-button
-                  v-else
-                  size="small"
-                  :loading="scoring"
-                  @click="runScore"
-                >
-                  <el-icon v-if="!scoring"><Refresh /></el-icon>
-                  重新检测
-                </el-button>
-              </div>
-            </header>
-
-            <div class="result-content content-prose" @click="handleContentClick">
-              <p
-                v-for="(paragraph, index) in paragraphs"
-                :key="index"
-                v-html="renderParagraph(paragraph, index)"
-              />
-            </div>
-
-            <footer class="result-foot">
-              <div class="word-status" :class="wordStatusClass">
-                <i />
-                {{ wordStatusText }}
-              </div>
-              <span class="content-hint">
-                {{ score ? '带下划线的句子是检测出的问题，点击可跳到问题说明。' : '点击右上角“检测像不像你”，逐句对照你的档案。' }}
-              </span>
-            </footer>
-          </section>
-
+      <main ref="resultRef" class="desk-area">
+        <div class="desk-main">
           <el-alert
-            v-if="rewriteError"
-            class="rewrite-error"
-            :title="rewriteError.title"
-            type="warning"
+            v-if="errorState"
+            class="result-error"
+            :title="errorState.title"
+            type="error"
             show-icon
-            :closable="true"
-            @close="rewriteError = null"
+            :closable="false"
           >
-            <p>{{ rewriteError.message }}</p>
+            <p class="error-message">{{ errorState.message }}</p>
           </el-alert>
 
-          <ScorePanel
-            v-if="score"
-            :score="score"
-            :profile-name="generation?.profileName || ''"
-            :rewrite-rounds="rewriteRounds"
-            :max-rounds="2"
-            :rewriting="rewriting"
-            @rewrite="rewrite"
+          <section v-if="generating && !content" class="generating-card paper-card">
+            <div class="writing-animation">
+              <span class="seal writing-seal">写</span>
+              <span class="writing-line line-one" />
+              <span class="writing-line line-two" />
+              <span class="writing-line line-three" />
+            </div>
+            <p class="eyebrow plain">Composing</p>
+            <h2>正在按你的笔迹落笔</h2>
+            <p class="generating-sub">
+              {{ pendingMeta.profileName }} · {{ pendingMeta.platformLabel }}
+            </p>
+            <div class="generation-stages">
+              <span
+                v-for="(stage, index) in generationStages"
+                :key="stage"
+                :class="{ active: index === generationStage, done: index < generationStage }"
+              >
+                <i />
+                {{ stage }}
+              </span>
+            </div>
+            <p class="generating-time">通常需要 10–40 秒，请稍候。</p>
+          </section>
+
+          <template v-else>
+            <ArticleEditor
+              :model-value="content"
+              :title="articleTitle"
+              :platform-label="editorPlatformLabel"
+              :profile-name="editorProfileName"
+              :created-at="generation?.createdAt || null"
+              :word-status-text="wordStatusText"
+              :word-status-class="wordStatusClass"
+              :saving="saving"
+              :saved="Boolean(savedArticleId)"
+              :saved-at="savedAt"
+              :dirty="isDirty"
+              :scoring="scoring"
+              :has-score="Boolean(score)"
+              :generating="generating"
+              :can-regenerate="canRegenerate"
+              :can-save="canSave"
+              @update:model-value="handleContentUpdate"
+              @update:title="articleTitle = $event"
+              @save="saveArticle"
+              @regenerate="regenerate"
+              @score="runScore"
+              @copy="copyContent"
+              @new="startNew"
+            />
+
+            <ScorePanel
+              v-if="score"
+              :score="score"
+              :profile-name="editorProfileName"
+            />
+          </template>
+        </div>
+
+        <aside class="desk-side">
+          <CandidatePanel
+            v-if="candidate"
+            :candidate="candidate"
+            :current-score="score?.score ?? null"
+            @accept="acceptCandidate"
+            @dismiss="dismissCandidate"
           />
 
-          <ComparePane
-            v-if="compare"
-            :before="compare.before"
-            :after="compare.after"
-            :before-score="compare.beforeScore"
-            :after-score="compare.afterScore"
+          <AssistantPanel
+            v-model="assistantDraft"
+            :messages="assistantMessages"
+            :loading="assistantLoading"
+            @send="sendAssistant"
+            @clear="clearAssistant"
           />
-        </template>
+        </aside>
       </main>
     </div>
   </div>
 </template>
 
 <script setup>
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
-import { useRoute } from 'vue-router';
-import { ElMessage } from 'element-plus';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
+import { ElMessage, ElMessageBox } from 'element-plus';
 import { ChatDotRound, Star, VideoCamera } from '@element-plus/icons-vue';
 import TuningSliders from '../components/TuningSliders.vue';
 import ScorePanel from '../components/ScorePanel.vue';
-import ComparePane from '../components/ComparePane.vue';
-import { metaApi, profileApi, writingApi } from '../api';
-import { countChars, formatDateTime } from '../utils/format';
+import ArticleEditor from '../components/ArticleEditor.vue';
+import CandidatePanel from '../components/CandidatePanel.vue';
+import AssistantPanel from '../components/AssistantPanel.vue';
+import { articleApi, assistantApi, metaApi, profileApi, writingApi } from '../api';
+import { countChars } from '../utils/format';
 
 const route = useRoute();
+const router = useRouter();
 
 const platforms = ref([]);
 const profiles = ref([]);
@@ -359,22 +315,32 @@ const tuning = ref({ formality: 50, detail: 50, emotion: 50, assertiveness: 50 }
 const generating = ref(false);
 const generationStage = ref(0);
 const scoring = ref(false);
-const rewriting = ref(false);
 const content = ref('');
+const articleTitle = ref('');
 const generation = ref(null);
 const score = ref(null);
-const compare = ref(null);
-const rewriteRounds = ref(0);
+const candidate = ref(null);
 const errorState = ref(null);
-const rewriteError = ref(null);
 const resultRef = ref(null);
+const pendingMeta = ref({ profileName: '不使用档案', platformLabel: '' });
+
+const savedArticleId = ref(null);
+const savedAt = ref(null);
+const lastSavedContent = ref('');
+const lastSavedTitle = ref('');
+const saving = ref(false);
+
+const assistantMessages = ref([]);
+const assistantDraft = ref('');
+const assistantLoading = ref(false);
 
 let stageTimer = null;
+let candidateScoreToken = 0;
 
 const generationStages = [
-  '搭一个具体的开头',
-  '按档案调整语气和句长',
-  '补上细节与平台格式',
+  '读一遍主题和素材',
+  '对照档案原文找语感',
+  '重新写出一整篇',
 ];
 
 const platformIconMap = {
@@ -386,32 +352,48 @@ const platformIconMap = {
 const currentPlatform = computed(() =>
   platforms.value.find((platform) => platform.key === selectedPlatform.value)
 );
-const generationPlatform = computed(() =>
-  platforms.value.find((platform) => platform.key === generation.value?.platform)
+const activePlatform = computed(() =>
+  platforms.value.find(
+    (platform) => platform.key === (generation.value?.platform || selectedPlatform.value)
+  )
 );
 const wordCount = computed(() => countChars(content.value));
-const paragraphs = computed(() =>
-  String(content.value || '')
-    .replace(/\r\n/g, '\n')
-    .split(/\n+/)
-    .map((paragraph) => paragraph.trim())
-    .filter(Boolean)
+const editorPlatformLabel = computed(
+  () => generation.value?.platformLabel || platformLabel(selectedPlatform.value)
 );
-const generationProfileId = computed(() => generation.value?.profileId ?? selectedProfileId.value);
+const editorProfileName = computed(
+  () => generation.value?.profileName || profileLabel(selectedProfileId.value)
+);
+const isDirty = computed(() => {
+  if (!content.value && !articleTitle.value.trim()) return false;
+  return (
+    content.value !== lastSavedContent.value ||
+    articleTitle.value !== lastSavedTitle.value
+  );
+});
+const canSave = computed(
+  () =>
+    Boolean(content.value.trim()) &&
+    !saving.value &&
+    (!savedArticleId.value || isDirty.value)
+);
+const canRegenerate = computed(
+  () => Boolean(generation.value || content.value.trim()) && !generating.value
+);
 
 const wordStatusClass = computed(() => {
-  if (!generationPlatform.value) return '';
-  if (wordCount.value < generationPlatform.value.minChars) return 'short';
-  if (wordCount.value > generationPlatform.value.maxChars) return 'long';
+  if (!activePlatform.value) return '';
+  if (wordCount.value < activePlatform.value.minChars) return 'short';
+  if (wordCount.value > activePlatform.value.maxChars) return 'long';
   return 'ok';
 });
 const wordStatusText = computed(() => {
-  if (!generationPlatform.value) return `${wordCount.value} 字`;
-  if (wordCount.value < generationPlatform.value.minChars) {
-    return `还差 ${generationPlatform.value.minChars - wordCount.value} 字到平台下限`;
+  if (!activePlatform.value) return `${wordCount.value} 字`;
+  if (wordCount.value < activePlatform.value.minChars) {
+    return `还差 ${activePlatform.value.minChars - wordCount.value} 字到平台下限`;
   }
-  if (wordCount.value > generationPlatform.value.maxChars) {
-    return `超出 ${wordCount.value - generationPlatform.value.maxChars} 字，建议删减`;
+  if (wordCount.value > activePlatform.value.maxChars) {
+    return `超出 ${wordCount.value - activePlatform.value.maxChars} 字，建议删减`;
   }
   return '篇幅符合平台要求';
 });
@@ -421,12 +403,21 @@ function platformIcon(key) {
 }
 
 function platformLabel(key) {
-  return platforms.value.find((platform) => platform.key === key)?.label || key;
+  return platforms.value.find((platform) => platform.key === key)?.label || key || '未选平台';
 }
 
 function profileLabel(id) {
   if (!id) return '不使用档案';
   return profiles.value.find((profile) => profile.id === Number(id))?.name || '所选档案';
+}
+
+function deriveTitle(text) {
+  const firstLine = String(text || '')
+    .replace(/\r\n/g, '\n')
+    .split('\n')
+    .map((line) => line.trim())
+    .find(Boolean);
+  return (firstLine || '').slice(0, 40);
 }
 
 function startStageTicker() {
@@ -457,6 +448,11 @@ async function load() {
     if (preferred && profiles.value.some((profile) => profile.id === preferred)) {
       selectedProfileId.value = preferred;
     }
+
+    const articleId = Number(route.query.article);
+    if (Number.isInteger(articleId) && articleId > 0) {
+      await loadArticle(articleId);
+    }
   } catch (error) {
     ElMessage.error(error.message || '页面加载失败');
   }
@@ -481,29 +477,23 @@ function applyDemo() {
   }
 
   errorState.value = null;
-  rewriteError.value = null;
   ElMessage.success('示例设置已载入');
 }
 
-async function generate() {
-  if (generating.value) return;
-  if (!topic.value.trim()) {
-    ElMessage.warning('先写下这次想写什么');
-    return;
+function buildGenerationPayload({ regenerate = false } = {}) {
+  // “重新生成”沿用第一遍的主题、档案和平台，不读取写作台里手动改过的正文。
+  if (regenerate && generation.value) {
+    const snapshot = generation.value;
+    return {
+      topic: snapshot.topic,
+      platform: snapshot.platform,
+      profileId: snapshot.profileId ?? 0,
+      tuningEnabled: Boolean(snapshot.tuningEnabled),
+      ...(snapshot.tuningEnabled && snapshot.tuning
+        ? { tuning: { ...snapshot.tuning } }
+        : {}),
+    };
   }
-  if (!platforms.value.length) {
-    ElMessage.error('平台信息还没有加载完成');
-    return;
-  }
-
-  generating.value = true;
-  errorState.value = null;
-  rewriteError.value = null;
-  score.value = null;
-  compare.value = null;
-  rewriteRounds.value = 0;
-  content.value = '';
-  startStageTicker();
 
   const payload = {
     topic: topic.value.trim(),
@@ -512,29 +502,94 @@ async function generate() {
     tuningEnabled: tuningEnabled.value,
   };
   if (tuningEnabled.value) payload.tuning = { ...tuning.value };
+  return payload;
+}
+
+async function generate(options = {}) {
+  if (generating.value) return;
+
+  const regenerate = options.mode === 'regenerate';
+  const payload = buildGenerationPayload({ regenerate });
+  if (!payload.topic) {
+    ElMessage.warning('先写下这次想写什么');
+    return;
+  }
+  if (!platforms.value.length) {
+    ElMessage.error('平台信息还没有加载完成');
+    return;
+  }
+
+  const hasCurrent = Boolean(content.value.trim());
+  const willReplace = !hasCurrent;
+
+  pendingMeta.value = {
+    profileName: profileLabel(payload.profileId),
+    platformLabel: platformLabel(payload.platform),
+  };
+  generating.value = true;
+  errorState.value = null;
+  if (!willReplace) {
+    candidate.value = {
+      loading: true,
+      content: '',
+      scoring: false,
+      score: null,
+      generation: null,
+      createdAt: null,
+    };
+  }
+  startStageTicker();
 
   try {
     const data = await writingApi.generate(payload);
-    content.value = data.content;
-    generation.value = {
+    const snapshot = {
       id: data.id,
+      title: data.title || '',
       platform: data.platform,
       platformLabel: platformLabel(data.platform),
       profileId: data.profileId ?? null,
       profileName: profileLabel(data.profileId),
       topic: payload.topic,
+      tuningEnabled: Boolean(payload.tuningEnabled),
+      tuning: payload.tuning ? { ...payload.tuning } : null,
       createdAt: data.createdAt,
     };
-    stopStageTicker();
-    ElMessage.success('生成完成');
+
+    if (willReplace) {
+      content.value = data.content;
+      // 标题和正文由模型一起生成；只有模型漏掉标题时才用主题兜底。
+      articleTitle.value = data.title || deriveTitle(payload.topic);
+      // 新的第一稿不继承旧文章的保存 id，避免误覆盖“我的文章”里的旧稿。
+      savedArticleId.value = null;
+      savedAt.value = null;
+      lastSavedContent.value = '';
+      lastSavedTitle.value = '';
+      generation.value = snapshot;
+      score.value = null;
+      candidate.value = null;
+      ElMessage.success('第一稿已放进写作台，可以直接修改');
+    } else {
+      candidate.value = {
+        loading: false,
+        title: data.title || deriveTitle(payload.topic),
+        content: data.content,
+        scoring: true,
+        score: null,
+        generation: snapshot,
+        createdAt: data.createdAt,
+      };
+      ElMessage.success('候选稿已生成，当前文章没有改动');
+      scoreCandidate(data.content, snapshot);
+    }
+
     await nextTick();
     resultRef.value?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   } catch (error) {
-    stopStageTicker();
-    if (error.code === 'LLM_NOT_CONFIGURED') {
+    candidate.value = null;
+    if (error.code === 'NO_API_KEY') {
       errorState.value = {
         code: error.code,
-        title: '尚未配置模型 API Key',
+        title: '无 API Key',
         message:
           error.message ||
           '请在 backend/.env 中配置 LLM_API_KEY 并重启后端，再重新生成。',
@@ -552,16 +607,78 @@ async function generate() {
   }
 }
 
-async function runScore() {
-  if (!content.value || scoring.value) return;
-  scoring.value = true;
-  rewriteError.value = null;
+function leftGenerate() {
+  generate({ mode: 'auto' });
+}
+
+function regenerate() {
+  generate({ mode: 'regenerate' });
+}
+
+async function scoreCandidate(text, snapshot) {
+  const token = ++candidateScoreToken;
   try {
     const data = await writingApi.score({
-      content: content.value,
-      platform: generation.value?.platform || selectedPlatform.value,
-      profileId: generation.value?.profileId ?? 0,
+      content: text,
+      platform: snapshot.platform,
+      profileId: snapshot.profileId ?? 0,
     });
+    if (token !== candidateScoreToken) return;
+    if (!candidate.value || candidate.value.content !== text) return;
+    candidate.value = {
+      ...candidate.value,
+      score: data.score,
+      scoring: false,
+    };
+  } catch {
+    if (token !== candidateScoreToken) return;
+    if (candidate.value && candidate.value.content === text) {
+      candidate.value = { ...candidate.value, scoring: false };
+    }
+  }
+}
+
+function acceptCandidate() {
+  const current = candidate.value;
+  if (!current?.content) return;
+  candidateScoreToken += 1;
+  content.value = current.content;
+  // 替换正文时一并采用候选稿的标题；用户之后仍可手动改。
+  articleTitle.value = current.title || articleTitle.value || deriveTitle(current.generation?.topic || '');
+  score.value = current.score || null;
+  generation.value = current.generation || generation.value;
+  candidate.value = null;
+  errorState.value = null;
+  ElMessage.success('已替换为候选稿，记得保存');
+}
+
+function dismissCandidate() {
+  candidateScoreToken += 1;
+  candidate.value = null;
+  ElMessage.info('已保留当前文章');
+}
+
+function handleContentUpdate(value) {
+  content.value = value;
+  // 正文一改，旧检测结果就不再对应当前内容。
+  if (score.value) score.value = null;
+}
+
+async function runScore() {
+  if (!content.value.trim() || scoring.value) return;
+  const scoredContent = content.value;
+  scoring.value = true;
+  try {
+    const data = await writingApi.score({
+      content: scoredContent,
+      platform: generation.value?.platform || selectedPlatform.value,
+      // 有生成快照时按当时的档案检测，避免侧边控制项改选后分数与显示不一致。
+      profileId: generation.value
+        ? generation.value.profileId ?? 0
+        : selectedProfileId.value ?? 0,
+    });
+    // 检测期间正文如果又被改过，丢掉这次旧结果。
+    if (content.value !== scoredContent) return;
     score.value = data.score;
     if (!data.score.issues?.length) {
       ElMessage.success('没有发现明显问题');
@@ -573,116 +690,101 @@ async function runScore() {
   }
 }
 
-async function rewrite() {
-  if (!score.value || rewriting.value) return;
-  if (rewriteRounds.value >= 2) {
-    ElMessage.warning('已经达到 2 轮重写上限');
-    return;
-  }
-
-  rewriting.value = true;
-  rewriteError.value = null;
-  const beforeContent = content.value;
-
+async function saveArticle() {
+  if (!content.value.trim() || saving.value) return;
+  saving.value = true;
   try {
-    const data = await writingApi.rewrite({
-      content: beforeContent,
-      problems: score.value.issues || [],
-      profileId: generation.value?.profileId ?? 0,
+    const payload = {
+      title: articleTitle.value.trim(),
+      content: content.value,
+      topic: generation.value?.topic || topic.value.trim(),
       platform: generation.value?.platform || selectedPlatform.value,
-      topic: generation.value?.topic || topic.value,
-    });
+      // 快照里的 null 表示“不使用档案”，不要被后来改选的档案覆盖。
+      profileId: generation.value
+        ? generation.value.profileId ?? null
+        : selectedProfileId.value ?? null,
+    };
+    const data = savedArticleId.value
+      ? await articleApi.update(savedArticleId.value, payload)
+      : await articleApi.create(payload);
+    const article = data.article;
+    savedArticleId.value = article.id;
+    articleTitle.value = article.title;
+    savedAt.value = article.updatedAt;
+    lastSavedContent.value = article.content;
+    lastSavedTitle.value = article.title;
+    ElMessage.success('文章已保存到「我的文章」');
+  } catch (error) {
+    ElMessage.error(error.message || '保存失败，请稍后再试');
+  } finally {
+    saving.value = false;
+  }
+}
 
-    // 每次拿到模型响应都计 1 轮（包括未采用），用于限制 API 消耗。
-    rewriteRounds.value += 1;
+async function loadArticle(id) {
+  try {
+    const data = await articleApi.detail(id);
+    const article = data.article;
+    content.value = article.content;
+    articleTitle.value = article.title;
+    savedArticleId.value = article.id;
+    savedAt.value = article.updatedAt;
+    lastSavedContent.value = article.content;
+    lastSavedTitle.value = article.title;
+    score.value = null;
+    candidate.value = null;
+    errorState.value = null;
+    selectedPlatform.value = article.platform || selectedPlatform.value;
+    selectedProfileId.value = article.profileId ?? null;
+    topic.value = article.topic || article.title || '';
+    generation.value = {
+      id: null,
+      platform: article.platform,
+      platformLabel: article.platformLabel,
+      profileId: article.profileId,
+      profileName: article.profileName || '不使用档案',
+      topic: article.topic || article.title || '',
+      tuningEnabled: false,
+      tuning: null,
+      createdAt: article.createdAt,
+    };
+    ElMessage.success(`已打开「${article.title}」`);
+  } catch (error) {
+    ElMessage.error(error.message || '文章加载失败');
+    if (route.query.article) await router.replace({ name: 'write' });
+  }
+}
 
-    if (data.accepted === false) {
-      // 后端已判定候选稿降分，正文与评分都保持原稿。
-      content.value = data.content;
-      score.value = data.score;
-      rewriteError.value = {
-        code: 'REWRITE_NOT_IMPROVED',
-        title: '本轮改写未提升',
-        message: `本轮改写未提升：${data.beforeScore} → ${data.afterScore}，已保留原稿。`,
-      };
+async function startNew() {
+  if (isDirty.value) {
+    try {
+      await ElMessageBox.confirm(
+        '写作台还有未保存的修改，新建会清空当前内容。',
+        '新建文章',
+        {
+          confirmButtonText: '新建',
+          cancelButtonText: '取消',
+          type: 'warning',
+        }
+      );
+    } catch {
       return;
     }
-
-    content.value = data.content;
-    score.value = data.score;
-
-    if (!compare.value) {
-      compare.value = {
-        before: beforeContent,
-        after: data.content,
-        beforeScore: data.beforeScore,
-        afterScore: data.afterScore,
-      };
-    } else {
-      compare.value = {
-        ...compare.value,
-        after: data.content,
-        afterScore: data.afterScore,
-      };
-    }
-
-    const summary = `第 ${rewriteRounds.value} 轮改写完成：${data.beforeScore} → ${data.afterScore}`;
-    if (data.afterScore < data.beforeScore) {
-      ElMessage.warning(`${summary}（小幅下降，已采用）`);
-    } else {
-      ElMessage.success(summary);
-    }
-  } catch (error) {
-    if (error.code === 'LLM_NOT_CONFIGURED') {
-      rewriteError.value = {
-        code: error.code,
-        title: '尚未配置模型 API Key',
-        message:
-          error.message ||
-          '请在 backend/.env 中配置 LLM_API_KEY 并重启后端，再重新改写。',
-      };
-    } else {
-      rewriteError.value = {
-        code: error.code,
-        title: '这次没有改写成功',
-        message: error.message || '请稍后重试。',
-      };
-    }
-  } finally {
-    rewriting.value = false;
   }
-}
 
-function escapeHtml(text) {
-  return String(text)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
-
-function renderParagraph(paragraph, index) {
-  let html = escapeHtml(paragraph);
-  const issues =
-    score.value?.issues?.filter((issue) => issue.paragraph === index + 1 && issue.sentence) || [];
-
-  for (const issue of issues) {
-    const sentence = escapeHtml(issue.sentence);
-    if (!sentence || !html.includes(sentence)) continue;
-    html = html.replace(
-      sentence,
-      `<mark class="ink-mark ${issue.severity}" data-issue="${issue.id}" title="${escapeHtml(issue.reason)}">${sentence}</mark>`
-    );
-  }
-  return html;
-}
-
-function handleContentClick(event) {
-  const mark = event.target.closest('mark[data-issue]');
-  if (!mark) return;
-  const card = document.querySelector(`.issue-card[data-issue="${mark.dataset.issue}"]`);
-  card?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  candidateScoreToken += 1;
+  content.value = '';
+  articleTitle.value = '';
+  savedArticleId.value = null;
+  savedAt.value = null;
+  lastSavedContent.value = '';
+  lastSavedTitle.value = '';
+  score.value = null;
+  candidate.value = null;
+  generation.value = null;
+  errorState.value = null;
+  if (route.query.article) await router.replace({ name: 'write' });
+  ElMessage.success('写作台已清空，可以写新的了');
 }
 
 async function copyContent() {
@@ -703,13 +805,60 @@ async function copyContent() {
   }
 }
 
+async function sendAssistant(question) {
+  const text = String(question || '').trim();
+  if (!text || assistantLoading.value) return;
+  const userMessage = { role: 'user', content: text };
+  const history = [...assistantMessages.value, userMessage].slice(-20);
+  assistantMessages.value = history;
+  assistantDraft.value = '';
+  assistantLoading.value = true;
+  try {
+    const data = await assistantApi.chat(history);
+    assistantMessages.value = [
+      ...assistantMessages.value,
+      { role: 'assistant', content: data.reply },
+    ];
+  } catch (error) {
+    assistantMessages.value = assistantMessages.value.slice(0, -1);
+    assistantDraft.value = text;
+    ElMessage.error(error.message || '助手暂时没有回应');
+  } finally {
+    assistantLoading.value = false;
+  }
+}
+
+async function clearAssistant() {
+  if (!assistantMessages.value.length || assistantLoading.value) return;
+  try {
+    await ElMessageBox.confirm('清空当前对话？', '清空对话', {
+      confirmButtonText: '清空',
+      cancelButtonText: '取消',
+      type: 'warning',
+    });
+  } catch {
+    return;
+  }
+  assistantMessages.value = [];
+  assistantDraft.value = '';
+}
+
+watch(
+  () => route.query.article,
+  (value, oldValue) => {
+    if (!value || value === oldValue) return;
+    const id = Number(value);
+    if (Number.isInteger(id) && id > 0) loadArticle(id);
+  }
+);
+
 onMounted(load);
 onBeforeUnmount(stopStageTicker);
 </script>
 
 <style scoped>
 .write-page {
-  max-width: 1320px;
+  max-width: 1560px;
   padding-top: 40px;
 }
 
@@ -718,7 +867,7 @@ onBeforeUnmount(stopStageTicker);
   align-items: flex-end;
   justify-content: space-between;
   gap: 30px;
-  margin-bottom: 30px;
+  margin-bottom: 28px;
 }
 
 .write-header .page-title {
@@ -728,14 +877,16 @@ onBeforeUnmount(stopStageTicker);
 .header-side {
   display: flex;
   align-items: center;
-  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
   flex: none;
 }
 
 .write-layout {
   display: grid;
-  grid-template-columns: 390px minmax(0, 1fr);
-  gap: 26px;
+  grid-template-columns: 340px minmax(0, 1fr);
+  gap: 22px;
   align-items: start;
 }
 
@@ -1032,16 +1183,40 @@ onBeforeUnmount(stopStageTicker);
   text-align: center;
 }
 
-.result-area {
-  display: flex;
-  flex-direction: column;
+.desk-area {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 350px;
   gap: 18px;
+  align-items: start;
   min-width: 0;
   min-height: 620px;
   scroll-margin-top: 20px;
 }
 
-.empty-result,
+.desk-main {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  min-width: 0;
+}
+
+.desk-side {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  min-width: 0;
+}
+
+.result-error {
+  border-radius: 6px;
+}
+
+.error-message {
+  margin-top: 4px;
+  font-size: 11.5px;
+  line-height: 1.7;
+}
+
 .generating-card {
   display: flex;
   flex-direction: column;
@@ -1053,94 +1228,6 @@ onBeforeUnmount(stopStageTicker);
   background:
     radial-gradient(circle at 50% 18%, rgba(185, 65, 43, 0.055), transparent 42%),
     rgba(255, 253, 248, 0.62);
-}
-
-.empty-mark {
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 122px;
-  height: 122px;
-  margin-bottom: 30px;
-}
-
-.empty-seal {
-  width: 52px;
-  height: 52px;
-  font-size: 27px;
-}
-
-.empty-ring {
-  position: absolute;
-  border: 1px solid var(--line);
-  border-radius: 50%;
-}
-
-.ring-a {
-  inset: 9px;
-  border-style: dashed;
-}
-
-.ring-b {
-  inset: 0;
-  opacity: 0.5;
-}
-
-.empty-result h2,
-.generating-card h2 {
-  margin-top: 12px;
-  font-size: 29px;
-  letter-spacing: -0.03em;
-}
-
-.empty-result > p:not(.eyebrow),
-.generating-sub {
-  max-width: 440px;
-  margin-top: 12px;
-  color: var(--muted);
-  font-size: 12px;
-  line-height: 1.9;
-}
-
-.empty-steps {
-  display: flex;
-  gap: 22px;
-  margin-top: 26px;
-  padding-top: 20px;
-  border-top: 1px solid var(--line);
-}
-
-.empty-steps span {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--muted);
-  font-size: 9.5px;
-}
-
-.empty-steps i {
-  color: var(--vermilion);
-  font-size: 8.5px;
-  font-style: normal;
-}
-
-.empty-demo {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-top: 28px;
-  padding: 10px 14px;
-  border: 1px dashed var(--line-strong);
-  border-radius: 5px;
-  background: rgba(255, 253, 248, 0.6);
-}
-
-.empty-demo span {
-  color: var(--muted-soft);
-  font-size: 9px;
-  line-height: 1.5;
-  text-align: left;
 }
 
 .writing-animation {
@@ -1212,6 +1299,20 @@ onBeforeUnmount(stopStageTicker);
   }
 }
 
+.generating-card h2 {
+  margin-top: 12px;
+  font-size: 29px;
+  letter-spacing: -0.03em;
+}
+
+.generating-sub {
+  max-width: 440px;
+  margin-top: 12px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.9;
+}
+
 .generation-stages {
   display: flex;
   gap: 18px;
@@ -1270,226 +1371,57 @@ onBeforeUnmount(stopStageTicker);
   font-size: 9px;
 }
 
-.result-error,
-.rewrite-error {
-  border-radius: 6px;
-}
-
-.error-message {
-  margin-top: 4px;
-  font-size: 11.5px;
-  line-height: 1.7;
-}
-
-.result-card {
-  overflow: hidden;
-}
-
-.result-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 24px;
-  padding: 26px 30px 20px;
-  border-bottom: 1px solid var(--line);
-}
-
-.result-title-row {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  margin-top: 5px;
-}
-
-.result-title-row h2 {
-  font-size: 24px;
-  letter-spacing: -0.025em;
-}
-
-.result-meta {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 8px;
-  color: var(--muted-soft);
-  font-size: 9.5px;
-}
-
-.result-meta i {
-  width: 3px;
-  height: 3px;
-  border-radius: 50%;
-  background: var(--line-strong);
-}
-
-.result-actions {
-  display: flex;
-  gap: 7px;
-  flex: none;
-}
-
-.result-content {
-  max-height: 760px;
-  overflow-y: auto;
-  padding: 32px 36px 34px;
-  font-size: 16.5px;
-  line-height: 2.05;
-}
-
-.result-content :deep(p + p) {
-  margin-top: 1.08em;
-}
-
-.result-content :deep(.ink-mark) {
-  padding: 1px 0;
-  border-radius: 2px;
-  background: transparent;
-  color: inherit;
-  cursor: pointer;
-  text-decoration-line: underline;
-  text-decoration-style: wavy;
-  text-underline-offset: 5px;
-  transition: background-color 0.2s ease;
-}
-
-.result-content :deep(.ink-mark.high) {
-  background: rgba(185, 65, 43, 0.09);
-  text-decoration-color: var(--vermilion);
-}
-
-.result-content :deep(.ink-mark.medium) {
-  background: rgba(169, 132, 69, 0.1);
-  text-decoration-color: var(--gold);
-}
-
-.result-content :deep(.ink-mark.low) {
-  text-decoration-color: var(--muted-soft);
-}
-
-.result-content :deep(.ink-mark:hover) {
-  background: rgba(185, 65, 43, 0.15);
-}
-
-.result-foot {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 20px;
-  padding: 14px 30px;
-  border-top: 1px solid var(--line);
-  background: rgba(255, 253, 248, 0.42);
-}
-
-.word-status {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--muted);
-  font-size: 9.5px;
-}
-
-.word-status i {
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: var(--line-strong);
-}
-
-.word-status.ok {
-  color: var(--jade);
-}
-
-.word-status.ok i {
-  background: var(--jade);
-}
-
-.word-status.short {
-  color: var(--gold);
-}
-
-.word-status.short i {
-  background: var(--gold);
-}
-
-.word-status.long {
-  color: var(--vermilion);
-}
-
-.word-status.long i {
-  background: var(--vermilion);
-}
-
-.content-hint {
-  color: var(--muted-soft);
-  font-size: 9px;
-  text-align: right;
-}
-
-@media (max-width: 1120px) {
-  .write-layout {
-    grid-template-columns: 340px minmax(0, 1fr);
-  }
-}
-
-@media (max-width: 960px) {
+@media (max-width: 1700px) {
   .write-layout {
     grid-template-columns: 1fr;
   }
 
   .control-panel {
     position: static;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 13px;
     max-height: none;
     overflow: visible;
     padding-right: 0;
   }
+}
 
-  .result-area {
-    min-height: 460px;
+@media (max-width: 1250px) {
+  .desk-area {
+    grid-template-columns: 1fr;
   }
 
-  .empty-result,
+  .desk-side {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    align-items: start;
+  }
+}
+
+@media (max-width: 900px) {
+  .control-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .desk-side {
+    grid-template-columns: 1fr;
+  }
+
   .generating-card {
     min-height: 460px;
   }
 }
 
-@media (max-width: 680px) {
+@media (max-width: 720px) {
   .write-header {
     flex-direction: column;
     align-items: flex-start;
     gap: 16px;
   }
 
-  .result-head {
-    flex-direction: column;
-    gap: 14px;
-    padding: 20px 18px 16px;
-  }
-
-  .result-actions {
-    width: 100%;
-  }
-
-  .result-actions .el-button {
-    flex: 1;
-    margin-left: 0;
-  }
-
-  .result-content {
-    padding: 24px 20px 26px;
-    font-size: 16px;
-  }
-
-  .result-foot {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 7px;
-    padding: 12px 18px;
-  }
-
-  .content-hint {
-    text-align: left;
+  .header-side {
+    justify-content: flex-start;
   }
 
   .generation-stages {
@@ -1497,16 +1429,6 @@ onBeforeUnmount(stopStageTicker);
     gap: 8px;
   }
 
-  .empty-steps {
-    flex-direction: column;
-    gap: 8px;
-  }
-
-  .empty-demo {
-    flex-direction: column;
-  }
-
-  .empty-result,
   .generating-card {
     padding: 36px 22px;
   }

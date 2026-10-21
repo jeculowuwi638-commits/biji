@@ -100,8 +100,29 @@ export const writingApi = {
   score(payload) {
     return api.post('/score', payload);
   },
-  rewrite(payload) {
-    return api.post('/rewrite', payload);
+};
+
+export const articleApi = {
+  list() {
+    return api.get('/articles');
+  },
+  detail(id) {
+    return api.get(`/articles/${id}`);
+  },
+  create(payload) {
+    return api.post('/articles', payload);
+  },
+  update(id, payload) {
+    return api.patch(`/articles/${id}`, payload);
+  },
+  remove(id) {
+    return api.delete(`/articles/${id}`);
+  },
+};
+
+export const assistantApi = {
+  chat(messages) {
+    return api.post('/assistant', { messages });
   },
 };
 

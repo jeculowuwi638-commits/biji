@@ -1,26 +1,25 @@
 const path = require('node:path');
 
 require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
-// 离线检查：强制无 Key，确保不会发出真实模型请求。
+// 离线检查：强制空 Key，验证没有 Key 时直接返回 NO_API_KEY。
 process.env.LLM_API_KEY = '';
 
 const assert = require('node:assert');
-const fs = require('node:fs');
-const config = require('../src/config');
 const llm = require('../src/services/llm');
 const { buildSemanticPrompt } = require('../src/services/style');
-const { buildGeneratePrompt, generateText } = require('../src/services/generate');
 const {
-  buildRewritePrompt,
-  rewriteContent,
-  evaluateRewriteGuard,
-} = require('../src/services/rewrite');
+  buildGeneratePrompt,
+  generateText,
+  parseGeneratedOutput,
+} = require('../src/services/generate');
+const { answerQuestion, buildAssistantPrompt } = require('../src/services/assistant');
 const { scoreContent } = require('../src/services/score');
 const {
   DEMO_WRITING,
   OPINION_ARTICLES,
   WORK_PROFILE,
   LIFE_PROFILE,
+  LIFE_ARTICLES,
 } = require('../src/demo/demoData');
 const responses = require('../src/demo/demoResponses');
 
@@ -29,9 +28,9 @@ const failures = [];
 async function expectNotConfigured(label, fn) {
   try {
     await fn();
-    throw new Error('应当抛出 LLM_NOT_CONFIGURED，但没有报错');
+    throw new Error('应当抛出 NO_API_KEY，但没有报错');
   } catch (error) {
-    assert.strictEqual(error.code, 'LLM_NOT_CONFIGURED', `${label} 错误码应为 LLM_NOT_CONFIGURED`);
+    assert.strictEqual(error.code, 'NO_API_KEY', `${label} 错误码应为 NO_API_KEY`);
     assert.strictEqual(error.status, 503, `${label} 状态码应为 503`);
     console.log(`  ✓ ${label.padEnd(28)} ${error.code} / ${error.status}`);
   }
@@ -64,135 +63,98 @@ function checkScoreDeterminism() {
   return score;
 }
 
-function checkPrompts(lifeScore) {
+function checkPrompts() {
+  // 生成时档案原文是风格的主要依据，必须完整进入提示词。
+  const profileWithTexts = { ...LIFE_PROFILE, texts: LIFE_ARTICLES };
   const generateA = buildGeneratePrompt({
     topic: DEMO_WRITING.topic,
     platform: 'wechat',
-    profile: LIFE_PROFILE,
+    profile: profileWithTexts,
     tuningEnabled: true,
     tuning: DEMO_WRITING.tuning,
   });
   const generateB = buildGeneratePrompt({
     topic: DEMO_WRITING.topic,
     platform: 'wechat',
-    profile: LIFE_PROFILE,
+    profile: profileWithTexts,
     tuningEnabled: true,
     tuning: DEMO_WRITING.tuning,
   });
   assert.deepStrictEqual(generateA, generateB, '生成提示词应可复现');
   assert.ok(generateA.user.includes('公众号'), '生成提示词应包含平台要求');
-  assert.ok(generateA.user.includes('档案摘要'), '生成提示词应包含档案信息');
+  assert.ok(generateA.user.includes('【作者原文】'), '生成提示词应包含原文段落');
+  assert.ok(generateA.user.includes('档案摘要'), '生成提示词应包含档案摘要');
+  assert.ok(generateA.user.includes('【标题】'), '生成提示词应要求模型输出标题');
+  assert.ok(generateA.user.includes('【正文】'), '生成提示词应要求模型输出正文');
+  for (const text of LIFE_ARTICLES) {
+    assert.ok(generateA.user.includes(text), '生成提示词应完整包含每一篇档案原文');
+  }
 
-  const rewrite = buildRewritePrompt({
-    content: responses.wechatLife,
-    problems: lifeScore.issues,
-    profile: LIFE_PROFILE,
-    platform: 'wechat',
+  const generateFallback = buildGeneratePrompt({
     topic: DEMO_WRITING.topic,
+    platform: 'wechat',
+    profile: LIFE_PROFILE,
   });
-  assert.ok(rewrite.user.includes('值得注意的是'), '重写提示词应包含问题清单');
-  assert.throws(
-    () => buildRewritePrompt({ content: '   ', problems: [] }),
-    (error) => error.code === 'INVALID_CONTENT',
-    '空正文构建重写提示词应报错'
+  assert.ok(
+    generateFallback.user.includes('没有保存原始文章'),
+    '旧档案没有原文时应降级为只使用档案摘要'
   );
+
+  const parsed = parseGeneratedOutput(
+    '【标题】把下班后的两小时留给自己\n\n【正文】\n\n以前的我，总把时间排得很满。',
+    { topic: '写一件最近发生的小事' }
+  );
+  assert.strictEqual(parsed.title, '把下班后的两小时留给自己', '应解析出模型生成的标题');
+  assert.strictEqual(parsed.content, '以前的我，总把时间排得很满。', '标题不应混进正文');
+
+  const titleFallback = parseGeneratedOutput('只有正文，没有标题标记。', {
+    topic: '第一行主题\n第二行素材',
+  });
+  assert.strictEqual(titleFallback.title, '第一行主题', '模型漏标题时应使用主题兜底');
+  assert.strictEqual(titleFallback.content, '只有正文，没有标题标记。', '兜底时不应丢失正文');
+
+  const bodyOnly = parseGeneratedOutput('标题在前\n【正文】\n正文在后', {
+    topic: '兜底主题',
+  });
+  assert.strictEqual(bodyOnly.title, '标题在前', '只有正文标记时应取标记前的短行作标题');
+  assert.strictEqual(bodyOnly.content, '正文在后', '正文标记后的内容应作为正文');
 
   const semantic = buildSemanticPrompt(OPINION_ARTICLES);
   const semanticAgain = buildSemanticPrompt(OPINION_ARTICLES);
   assert.deepStrictEqual(semantic, semanticAgain, '语义提示词应可复现');
   assert.ok(semantic.user.includes(OPINION_ARTICLES[0].slice(0, 20)), '语义提示词应包含文章');
-  console.log('  ✓ 生成 / 重写 / 语义提示词构建');
-}
 
-function checkCacheFile() {
-  const raw = fs.readFileSync(config.llm.cachePath, 'utf8');
-  const cache = JSON.parse(raw);
-  const entries = Object.entries(cache);
-  assert.strictEqual(entries.length, 3, `语义缓存应为 3 条，当前 ${entries.length} 条`);
-  for (const [, entry] of entries) {
-    assert.ok(
-      typeof entry.label === 'string' && entry.label.startsWith('profile:'),
-      `缓存中不应有非语义条目：${entry.label}`
-    );
-    assert.strictEqual(entry.model, config.llm.model, '缓存模型应与当前配置一致');
-  }
-  console.log(`  ✓ 语义缓存文件 · ${entries.length} 条（${config.llm.model}）`);
-}
-
-function checkGuard(lifeScore) {
-  const accepted = evaluateRewriteGuard({
-    originalContent: responses.wechatLife,
-    candidateContent: responses.rewriteLife,
-    profile: LIFE_PROFILE,
-    platform: 'wechat',
-  });
-  assert.strictEqual(accepted.accepted, true, '高分候选应被采用');
-  assert.strictEqual(accepted.content, responses.rewriteLife.trim());
-  assert.strictEqual(accepted.score.score, accepted.afterScore);
-  assert.ok(accepted.afterScore >= accepted.beforeScore);
-  console.log(
-    `  ✓ 降分保护：接受 · ${accepted.beforeScore} → ${accepted.afterScore}`
-  );
-
-  // 整篇重写允许 5 分以内的正常波动。
-  const smallDrop = `${responses.wechatLife}\n\n我坐在桌前，看着窗外的路灯一盏一盏亮起来，忽然意识到，所谓把时间还给自己，其实并不是要拒绝所有人，而是学会在必要的时候停下来，听一听自己内心的声音。`;
-  const tolerated = evaluateRewriteGuard({
-    originalContent: responses.wechatLife,
-    candidateContent: smallDrop,
-    profile: LIFE_PROFILE,
-    platform: 'wechat',
-  });
-  assert.strictEqual(tolerated.accepted, true, '降分在 5 分以内的候选应被采用');
-  assert.strictEqual(tolerated.content, smallDrop, '容忍范围内应返回改写稿');
+  const assistant = buildAssistantPrompt([
+    { role: 'user', content: '这句话怎么改得更自然？' },
+  ]);
+  assert.strictEqual(assistant.messages.length, 1, '助手初始对话应只有用户问题');
   assert.ok(
-    tolerated.beforeScore - tolerated.afterScore <= 5,
-    '容忍范围用例的降分应不超过 5 分'
+    !assistant.system.includes('档案原文') && !assistant.system.includes('作者原文'),
+    '助手系统提示词不应包含档案或原文'
   );
-  console.log(
-    `  ✓ 降分保护：小幅下降仍采用 · ${tolerated.beforeScore} → ${tolerated.afterScore}`
+  const assistantMulti = buildAssistantPrompt([
+    { role: 'user', content: '第一问' },
+    { role: 'assistant', content: '第一答' },
+    { role: 'user', content: '第二问' },
+  ]);
+  assert.strictEqual(assistantMulti.messages.length, 3, '助手应保留多轮对话');
+  assert.throws(
+    () => buildAssistantPrompt([{ role: 'assistant', content: '没有提问' }]),
+    (error) => error.code === 'INVALID_MESSAGES',
+    '助手最后一条不是提问时应报错'
   );
-
-  const worse = `${responses.wechatLife}\n\n综上所述，值得注意的是，在当今这个快节奏的时代，我们每个人都应该积极拥抱变化，不断提升自我，迎接更加美好的未来。`;
-  const rejected = evaluateRewriteGuard({
-    originalContent: responses.wechatLife,
-    candidateContent: worse,
-    profile: LIFE_PROFILE,
-    platform: 'wechat',
-  });
-  assert.strictEqual(rejected.accepted, false, '降分候选不应被采用');
-  assert.strictEqual(rejected.content, responses.wechatLife, '拒绝时应返回原稿');
-  assert.ok(
-    rejected.afterScore < rejected.beforeScore - 5,
-    '拒绝时候选分应比原稿低超过 5 分'
-  );
-  assert.strictEqual(rejected.score.score, rejected.beforeScore);
-  assert.deepStrictEqual(
-    { score: rejected.score.score, issues: rejected.score.issues, stats: rejected.score.stats },
-    { score: lifeScore.score, issues: lifeScore.issues, stats: lifeScore.stats },
-    '拒绝时返回的评分应与原稿评分一致'
-  );
-  console.log(
-    `  ✓ 降分保护：拒绝 · ${rejected.beforeScore} → ${rejected.afterScore}（保留原稿）`
-  );
-
-  const tie = evaluateRewriteGuard({
-    originalContent: responses.wechatLife,
-    candidateContent: responses.wechatLife,
-    profile: LIFE_PROFILE,
-    platform: 'wechat',
-  });
-  assert.strictEqual(tie.accepted, true, '平分应接受');
-  console.log(`  ✓ 降分保护：平分 · ${tie.beforeScore} → ${tie.afterScore}`);
+  console.log('  ✓ 生成 / 语义 / 助手提示词构建');
 }
 
 async function main() {
-  assert.strictEqual(llm.isConfigured(), false, 'smoke 必须在无 Key 环境运行');
+  assert.strictEqual(llm.isConfigured(), false, 'smoke 必须在空 Key 环境运行');
+  assert.strictEqual(
+    typeof llm.getCacheStatus,
+    'undefined',
+    'LLM 出口不应再暴露缓存接口'
+  );
 
-  console.log('\n== 语义缓存文件 ==');
-  checkCacheFile();
-  assert.strictEqual(llm.getCacheStatus().entries, 3);
-
-  console.log('\n== 无 Key 报错 ==');
+  console.log('\n== 无 API Key ==');
   await expectNotConfigured('生成', () =>
     generateText({
       topic: DEMO_WRITING.topic,
@@ -202,41 +164,23 @@ async function main() {
       tuning: null,
     })
   );
-  await expectNotConfigured('重写', () =>
-    rewriteContent({
-      content: responses.wechatLife,
-      problems: [],
-      profile: LIFE_PROFILE,
-      platform: 'wechat',
-      topic: DEMO_WRITING.topic,
-    })
-  );
   await expectNotConfigured('档案语义分析', () =>
-    llm.chat({ ...buildSemanticPrompt(OPINION_ARTICLES), label: 'profile-semantic', cache: true })
+    llm.chat({ ...buildSemanticPrompt(OPINION_ARTICLES), label: 'profile-semantic' })
   );
-  assert.strictEqual(
-    llm.getCacheStatus().entries,
-    3,
-    '无 Key 的失败路径不应写入缓存'
+  await expectNotConfigured('助手对话', () =>
+    answerQuestion([{ role: 'user', content: '这句话怎么改得更自然？' }])
   );
 
   console.log('\n== 提示词与评分 ==');
-  checkPrompts(scoreContent({
-    content: responses.wechatLife,
-    profile: LIFE_PROFILE,
-    platform: 'wechat',
-  }));
-  const lifeScore = checkScoreDeterminism();
-
-  console.log('\n== 重写降分保护 ==');
-  checkGuard(lifeScore);
+  checkPrompts();
+  checkScoreDeterminism();
 
   if (failures.length) {
     console.error(`\n失败 ${failures.length} 项：`);
     for (const failure of failures) console.error(`  - ${failure}`);
     process.exitCode = 1;
   } else {
-    console.log('\n离线检查全部通过（无 Key、无网络、缓存文件未变）。');
+    console.log('\n离线检查全部通过（空 Key、无网络、不读写模型缓存）。');
   }
 }
 

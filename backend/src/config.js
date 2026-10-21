@@ -19,9 +19,6 @@ const config = {
     model: process.env.LLM_MODEL || 'deepseek-chat',
     // 可选：DeepSeek V4 系列可设为 disabled 关闭思考模式；其他服务留空即可。
     thinking: (process.env.LLM_THINKING || '').trim().toLowerCase(),
-    // 仅档案语义分析使用；生成/重写不读写缓存。
-    cachePath:
-      process.env.LLM_CACHE_PATH || path.resolve(backendRoot, 'data/llm_cache.json'),
     timeoutMs: num(process.env.LLM_TIMEOUT_MS, 90000),
     retries: num(process.env.LLM_RETRIES, 1),
   },

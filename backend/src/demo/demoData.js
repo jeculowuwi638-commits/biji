@@ -185,7 +185,7 @@ function getDemoPayload() {
     },
     writing: DEMO_WRITING,
     seedProfiles: [WORK_PROFILE.name, LIFE_PROFILE.name],
-    // 把这两篇填进「继续投喂」可命中预热的语义缓存。
+    // 把这两篇填进「继续投喂」可演示追加；分析会实时调用模型。
     profileAppend: {
       [WORK_PROFILE.name]: WORK_APPEND_ARTICLES,
       [LIFE_PROFILE.name]: LIFE_APPEND_ARTICLES,

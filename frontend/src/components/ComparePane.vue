@@ -2,16 +2,24 @@
   <section class="compare-pane paper-card">
     <header class="compare-head">
       <div>
-        <span class="section-kicker">Before / After</span>
-        <h3>改写前后对比</h3>
+        <span class="section-kicker">Version A / B</span>
+        <h3>{{ title }}</h3>
       </div>
-      <p>左边是初稿，右边是按问题清单重写并复检后的版本。</p>
+      <p>{{ description }}</p>
     </header>
+
+    <p
+      v-if="scoreNote"
+      class="compare-note"
+      :class="{ dropped: afterScore < beforeScore }"
+    >
+      {{ scoreNote }}
+    </p>
 
     <div class="compare-grid">
       <article class="compare-column before">
         <div class="column-head">
-          <span class="column-label">改写前</span>
+          <span class="column-label">{{ beforeLabel }}</span>
           <span v-if="beforeScore != null" class="score-badge" :style="badgeStyle(beforeScore)">
             {{ beforeScore }} 分
           </span>
@@ -22,7 +30,7 @@
 
       <article class="compare-column after">
         <div class="column-head">
-          <span class="column-label">改写后</span>
+          <span class="column-label">{{ afterLabel }}</span>
           <span v-if="afterScore != null" class="score-badge" :style="badgeStyle(afterScore)">
             {{ afterScore }} 分
           </span>
@@ -35,13 +43,31 @@
 </template>
 
 <script setup>
+import { computed } from 'vue';
 import { countChars, scoreTone } from '../utils/format';
 
-defineProps({
+const props = defineProps({
   before: { type: String, default: '' },
   after: { type: String, default: '' },
   beforeScore: { type: Number, default: null },
   afterScore: { type: Number, default: null },
+  title: { type: String, default: '两版对比' },
+  description: {
+    type: String,
+    default: '左边是上一次生成并检测过的版本，右边是重新生成后的版本；两版都会保留，只把右边作为当前稿。',
+  },
+  beforeLabel: { type: String, default: '上一版' },
+  afterLabel: { type: String, default: '这一版' },
+});
+
+const scoreNote = computed(() => {
+  if (props.beforeScore == null || props.afterScore == null) return '';
+  const diff = props.afterScore - props.beforeScore;
+  if (diff < 0) {
+    return `这一版比上一版低 ${Math.abs(diff)} 分，已保留这一版；两版正文都在下面，可以对照查看。`;
+  }
+  if (diff > 0) return `这一版比上一版高 ${diff} 分，已保留这一版。`;
+  return '两版分数相同，已保留这一版。';
 });
 
 function chars(text) {
@@ -80,6 +106,22 @@ function badgeStyle(score) {
   font-size: 10.5px;
   line-height: 1.7;
   text-align: right;
+}
+
+.compare-note {
+  margin-top: 14px;
+  padding: 9px 12px;
+  border-left: 2px solid var(--jade);
+  border-radius: 4px;
+  background: rgba(69, 100, 82, 0.06);
+  color: var(--muted);
+  font-size: 10.5px;
+  line-height: 1.7;
+}
+
+.compare-note.dropped {
+  border-left-color: var(--gold);
+  background: rgba(169, 132, 69, 0.08);
 }
 
 .compare-grid {

@@ -34,7 +34,19 @@ const routes = [
     path: '/write',
     name: 'write',
     component: () => import('../views/WriteView.vue'),
-    meta: { title: '开始写作' },
+    meta: { title: '写作台' },
+  },
+  {
+    path: '/articles',
+    name: 'articles',
+    component: () => import('../views/ArticleListView.vue'),
+    meta: { title: '我的文章' },
+  },
+  {
+    path: '/articles/:id',
+    name: 'article-detail',
+    component: () => import('../views/ArticleDetailView.vue'),
+    meta: { title: '文章详情' },
   },
   {
     path: '/:pathMatch(.*)*',

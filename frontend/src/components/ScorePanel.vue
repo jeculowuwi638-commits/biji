@@ -131,32 +131,6 @@
           </div>
         </div>
 
-        <div class="rewrite-block">
-          <div class="rewrite-head">
-            <span class="section-kicker">Close the loop</span>
-            <span class="round mono">{{ rewriteRounds }} / {{ maxRounds }} 轮</span>
-          </div>
-          <h4>带着问题清单重写</h4>
-          <p>
-            AI 会逐条修复上面的问题，并保留你的档案特征。重写后自动复检，最多 {{ maxRounds }} 轮。
-          </p>
-          <el-button
-            type="primary"
-            class="rewrite-btn"
-            :loading="rewriting"
-            :disabled="!canRewrite"
-            @click="emit('rewrite')"
-          >
-            <el-icon v-if="!rewriting"><MagicStick /></el-icon>
-            {{
-              rewriteRounds >= maxRounds
-                ? '已达到重写上限'
-                : score.issues?.length
-                  ? '按问题重写并复检'
-                  : '暂无可修复的问题'
-            }}
-          </el-button>
-        </div>
       </aside>
     </div>
   </section>
@@ -169,22 +143,12 @@ import { scoreTone, severityMeta } from '../utils/format';
 const props = defineProps({
   score: { type: Object, required: true },
   profileName: { type: String, default: '' },
-  rewriteRounds: { type: Number, default: 0 },
-  maxRounds: { type: Number, default: 2 },
-  rewriting: { type: Boolean, default: false },
 });
-const emit = defineEmits(['rewrite']);
 
 const tone = computed(() => scoreTone(props.score.score));
 const ringStyle = computed(() => ({
   background: `conic-gradient(${tone.value.color} ${Math.min(100, Math.max(0, props.score.score)) * 3.6}deg, rgba(28, 27, 24, 0.08) 0deg)`,
 }));
-const canRewrite = computed(
-  () =>
-    !props.rewriting &&
-    props.rewriteRounds < props.maxRounds &&
-    Boolean(props.score.issues?.length)
-);
 
 function metaOf(issue) {
   return severityMeta(issue.severity);
@@ -544,41 +508,6 @@ function metaOf(issue) {
   margin-top: 2px;
   color: var(--muted-soft);
   font-size: 9.5px;
-}
-
-.rewrite-block {
-  padding: 16px;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  background: linear-gradient(150deg, rgba(185, 65, 43, 0.055), rgba(255, 253, 248, 0.4));
-}
-
-.rewrite-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.round {
-  color: var(--muted-soft);
-  font-size: 9.5px;
-}
-
-.rewrite-block h4 {
-  margin-top: 8px;
-  font-size: 15px;
-}
-
-.rewrite-block p {
-  margin-top: 7px;
-  color: var(--muted);
-  font-size: 10.5px;
-  line-height: 1.7;
-}
-
-.rewrite-btn {
-  width: 100%;
-  margin-top: 13px;
 }
 
 .small {

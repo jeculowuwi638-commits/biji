@@ -37,7 +37,8 @@ router.post(
       }
       profile = await prisma.profile.findFirst({
         where: { id: profileId, userId: req.userId },
-        select: { id: true, stats: true, semantic: true },
+        // 生成时要把档案里的原文一起发给模型，只靠 stats / semantic 的文字描述不够像。
+        select: { id: true, stats: true, semantic: true, texts: true },
       });
       if (!profile) {
         throw new AppError(404, 'NOT_FOUND', '档案不存在');
@@ -75,6 +76,7 @@ router.post(
 
     res.json({
       id: generation.id,
+      title: result.title,
       content: result.content,
       profileId: generation.profileId,
       platform: generation.platform,

@@ -42,7 +42,7 @@
           <span class="step-no">03</span>
           <div>
             <strong>像不像你</strong>
-            <p>逐句指出哪里不像你，再一键改写。</p>
+            <p>逐句指出哪里不像你，再换个版本重新生成。</p>
           </div>
         </div>
       </div>

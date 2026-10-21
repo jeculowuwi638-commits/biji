@@ -14,7 +14,8 @@ const authRoutes = require('./routes/auth');
 const profileRoutes = require('./routes/profiles');
 const generateRoutes = require('./routes/generate');
 const scoreRoutes = require('./routes/score');
-const rewriteRoutes = require('./routes/rewrite');
+const articleRoutes = require('./routes/articles');
+const assistantRoutes = require('./routes/assistant');
 const metaRoutes = require('./routes/meta');
 const demoRoutes = require('./routes/demo');
 
@@ -30,17 +31,13 @@ app.get('/api/health', async (req, res) => {
   } catch {
     db = 'error';
   }
-  const cache = llm.getCacheStatus();
   const status = db === 'ok' ? 200 : 503;
+  const usage = llm.getStats();
   res.status(status).json({
     api: 'ok',
     db,
-    cache: cache.status,
     llm: llm.isConfigured() ? 'enabled' : 'disabled',
-    cacheEntries: cache.entries,
-    cacheHits: cache.hits,
-    cacheScope: 'profile-semantic',
-    llmCalls: cache.apiCalls,
+    llmCalls: usage.apiCalls,
     model: llm.isConfigured() ? config.llm.model : null,
     time: new Date().toISOString(),
   });
@@ -50,7 +47,8 @@ app.use('/api/auth', authRoutes);
 app.use('/api/profiles', profileRoutes);
 app.use('/api/generate', generateRoutes);
 app.use('/api/score', scoreRoutes);
-app.use('/api/rewrite', rewriteRoutes);
+app.use('/api/articles', articleRoutes);
+app.use('/api/assistant', assistantRoutes);
 app.use('/api/meta', metaRoutes);
 app.use('/api/demo', demoRoutes);
 
@@ -94,15 +92,12 @@ app.use((err, req, res, next) => {
 let server = null;
 
 if (require.main === module) {
-  llm.loadCache();
-  const cache = llm.getCacheStatus();
-
   server = app.listen(config.port, '0.0.0.0', () => {
     console.log(`笔迹 API 已启动：http://localhost:${config.port}`);
     console.log(
       llm.isConfigured()
-        ? `LLM：${config.llm.model} · 语义缓存条目 ${cache.entries}（仅档案分析）`
-        : 'LLM：未配置 LLM_API_KEY（生成/改写/档案分析不可用）'
+        ? `LLM：${config.llm.model} · 每次调用实时请求，不使用缓存`
+        : 'LLM：无 API Key（生成/分析/助手不可用）'
     );
     if (config.jwtSecret === 'dev-secret-change-me') {
       console.warn('提示：当前使用默认 JWT_SECRET，正式演示前可以在 .env 中替换。');
