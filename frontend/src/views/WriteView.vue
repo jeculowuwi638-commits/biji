@@ -1,289 +1,299 @@
 <template>
   <div class="page-shell write-page">
-    <header class="write-header">
-      <div>
-        <p class="eyebrow">Writing desk · 写作台</p>
-        <h1 class="page-title">先写出来，<br />再改成你的。</h1>
-        <p class="page-subtitle">
-          三要素定下第一稿，正文会直接进入写作台，可以手动增删改。
-          重新生成是一次全新的写作，新版本放在侧边，不会覆盖当前文章；旁边的助手可以随时问。
+    <section class="setup-strip paper-card">
+      <div class="strip-head">
+        <div class="strip-heading">
+          <p class="eyebrow plain">Writing desk · 写作台</p>
+          <h1 class="strip-title">先写出来，再改成你的。</h1>
+        </div>
+
+        <div class="strip-actions">
+          <el-tooltip :content="scoreOrbHint" placement="bottom-end">
+            <button
+              type="button"
+              class="score-orb"
+              :class="{ 'has-score': Boolean(score), scoring }"
+              :style="scoreOrbStyle"
+              :disabled="!content.trim() || scoring"
+              :aria-label="scoreOrbHint"
+              @click="handleScoreOrb"
+            >
+              <span class="score-orb-inner">
+                <el-icon v-if="scoring" class="spin"><Loading /></el-icon>
+                <template v-else-if="score">
+                  <strong class="mono">{{ score.score }}</strong>
+                  <span>分</span>
+                </template>
+                <template v-else>
+                  <el-icon><Aim /></el-icon>
+                  <span>评分</span>
+                </template>
+              </span>
+            </button>
+          </el-tooltip>
+
+          <el-tooltip :content="generateNote" placement="bottom-end">
+            <el-button
+              type="primary"
+              size="large"
+              class="generate-btn"
+              :loading="generating"
+              @click="leftGenerate"
+            >
+              <el-icon v-if="!generating"><EditPen /></el-icon>
+              {{
+                generating
+                  ? (content ? '正在生成候选稿…' : '正在按你的笔迹写…')
+                  : (content ? '生成侧边候选稿' : '生成这一篇')
+              }}
+            </el-button>
+          </el-tooltip>
+        </div>
+      </div>
+
+      <div class="step-grid">
+        <article
+          v-for="step in steps"
+          :key="step.key"
+          class="step-card"
+          :class="{ filled: step.filled }"
+          @click="openStep(step.key)"
+        >
+          <div class="step-head">
+            <span class="step-no mono">{{ step.no }}</span>
+            <h2>{{ step.title }}</h2>
+            <button
+              type="button"
+              class="step-edit"
+              :title="`编辑${step.title}`"
+              :aria-label="`编辑${step.title}`"
+              @click.stop="openStep(step.key)"
+            >
+              <el-icon><component :is="step.icon" /></el-icon>
+            </button>
+          </div>
+          <p class="step-summary" :class="{ empty: !step.filled }">
+            {{ step.summary }}
+          </p>
+        </article>
+      </div>
+    </section>
+
+    <div class="desk-area" :class="{ 'with-candidate': Boolean(candidate) }">
+      <main ref="resultRef" class="desk-main">
+        <el-alert
+          v-if="errorState"
+          class="result-error"
+          :title="errorState.title"
+          type="error"
+          show-icon
+          :closable="false"
+        >
+          <p class="error-message">{{ errorState.message }}</p>
+        </el-alert>
+
+        <section v-if="generating && !content" class="generating-card paper-card">
+          <div class="writing-animation">
+            <span class="seal writing-seal">写</span>
+            <span class="writing-line line-one" />
+            <span class="writing-line line-two" />
+            <span class="writing-line line-three" />
+          </div>
+          <p class="eyebrow plain">Composing</p>
+          <h2>正在按你的笔迹落笔</h2>
+          <p class="generating-sub">
+            {{ pendingMeta.profileName }} · {{ pendingMeta.platformLabel }}
+          </p>
+          <div class="generation-stages">
+            <span
+              v-for="(stage, index) in generationStages"
+              :key="stage"
+              :class="{ active: index === generationStage, done: index < generationStage }"
+            >
+              <i />
+              {{ stage }}
+            </span>
+          </div>
+          <p class="generating-time">通常需要 10–40 秒，请稍候。</p>
+        </section>
+
+        <template v-else>
+          <ArticleEditor
+            :model-value="content"
+            :title="articleTitle"
+            :platform-label="editorPlatformLabel"
+            :profile-name="editorProfileName"
+            :created-at="generation?.createdAt || null"
+            :word-status-text="wordStatusText"
+            :word-status-class="wordStatusClass"
+            :saving="saving"
+            :saved="Boolean(savedArticleId)"
+            :saved-at="savedAt"
+            :dirty="isDirty"
+            :scoring="scoring"
+            :has-score="Boolean(score)"
+            :generating="generating"
+            :can-regenerate="canRegenerate"
+            :can-save="canSave"
+            @update:model-value="handleContentUpdate"
+            @update:title="articleTitle = $event"
+            @save="saveArticle"
+            @regenerate="regenerate"
+            @score="runScore"
+            @copy="copyContent"
+            @new="startNew"
+          />
+        </template>
+      </main>
+
+      <aside v-if="candidate" class="desk-side">
+        <CandidatePanel
+          :candidate="candidate"
+          :current-score="score?.score ?? null"
+          @accept="acceptCandidate"
+          @dismiss="dismissCandidate"
+        />
+      </aside>
+    </div>
+
+    <el-dialog
+      v-model="stepDialogVisible"
+      :title="dialogTitle"
+      width="620px"
+      class="step-dialog"
+    >
+      <div v-if="activeStep === 'topic'" class="dialog-section">
+        <el-input
+          v-model="topic"
+          type="textarea"
+          :autosize="{ minRows: 7, maxRows: 14 }"
+          maxlength="5000"
+          show-word-limit
+          resize="none"
+          placeholder="比如：写一件最近发生的小事——我开始把下班后的两个小时留给写作，也拒绝了几场不想去的饭局。写给那些总觉得时间被别人占满的人。"
+        />
+        <p class="dialog-hint">
+          这段只作为提示词，不会写进文章；标题和正文由模型另外生成。
+          带一点具体场景、对象或情绪，会比一句宽泛的题目更好写。
         </p>
       </div>
 
-      <div class="header-side">
-        <el-button v-if="demoData" size="small" @click="applyDemo">
-          <el-icon><MagicStick /></el-icon>
-          载入演示设置
-        </el-button>
-        <el-button size="small" @click="startNew">
-          <el-icon><DocumentAdd /></el-icon>
-          新建文章
-        </el-button>
-        <el-button size="small" @click="router.push({ name: 'articles' })">
-          <el-icon><Document /></el-icon>
-          我的文章
-        </el-button>
-      </div>
-    </header>
+      <div v-else-if="activeStep === 'profile'" class="dialog-section">
+        <p class="dialog-hint">
+          选一份笔迹档案，或退回普通 AI。生成时只读取档案，不会改动它。
+        </p>
 
-    <div class="write-layout">
-      <aside class="control-panel">
-        <section class="control-card paper-card">
-          <div class="element-head">
-            <span class="element-no mono">01</span>
-            <div>
-              <h2>写什么</h2>
-              <p>一个主题、一件事，或一段素材。</p>
-            </div>
-            <span class="char-counter mono">{{ topic.length }} / 5000</span>
-          </div>
-          <el-input
-            v-model="topic"
-            type="textarea"
-            :autosize="{ minRows: 5, maxRows: 10 }"
-            maxlength="5000"
-            resize="none"
-            placeholder="比如：写一件最近发生的小事——我开始把下班后的两个小时留给写作，也拒绝了几场不想去的饭局。写给那些总觉得时间被别人占满的人。"
-          />
-          <div class="topic-hint">
-            <span>
-              这段只作为提示词，不会写进文章；标题和正文由模型另外生成。
-              带一点具体场景、对象或情绪，会比一句宽泛的题目更好写。
-            </span>
-            <el-button
-              v-if="demoData"
-              text
-              size="small"
-              class="demo-topic-btn"
-              @click="topic = demoData.writing.topic"
-            >
-              用演示主题
-            </el-button>
-          </div>
-        </section>
-
-        <section class="control-card paper-card">
-          <div class="element-head">
-            <span class="element-no mono">02</span>
-            <div>
-              <h2>用哪份笔迹</h2>
-              <p>选一份笔迹档案，或退回普通 AI。</p>
-            </div>
-          </div>
-
-          <div class="profile-options">
-            <button
-              type="button"
-              class="profile-option none-option"
-              :class="{ active: selectedProfileId === null }"
-              @click="selectedProfileId = null"
-            >
-              <span class="radio-dot" />
-              <div class="option-copy">
-                <div class="option-title">
-                  <strong>不使用档案</strong>
-                  <span class="option-tag">对照组</span>
-                </div>
-                <p>普通 AI 直接写。检测时只跑通用 AI 味，不计算个人贴合度。</p>
-              </div>
-            </button>
-
-            <button
-              v-for="profile in profiles"
-              :key="profile.id"
-              type="button"
-              class="profile-option"
-              :class="{ active: selectedProfileId === profile.id }"
-              @click="selectedProfileId = profile.id"
-            >
-              <span class="radio-dot" />
-              <div class="option-copy">
-                <div class="option-title">
-                  <strong>{{ profile.name }}</strong>
-                  <span class="option-meta mono">
-                    {{ profile.stats?.avgSentenceLength || '—' }} 字/句
-                  </span>
-                </div>
-                <p>
-                  {{ profile.semantic?.summary || '表达档案' }}
-                </p>
-                <div v-if="profile.semantic?.catchphrases?.length" class="option-phrases">
-                  <span v-for="phrase in profile.semantic.catchphrases.slice(0, 3)" :key="phrase">
-                    {{ phrase }}
-                  </span>
-                </div>
-              </div>
-            </button>
-          </div>
-
-          <div v-if="!profiles.length" class="no-profile-note">
-            还没有档案。先去
-            <router-link :to="{ name: 'profile-create' }">提取一份</router-link>
-            ，或直接使用“不使用档案”作为对照组。
-          </div>
-        </section>
-
-        <section class="control-card paper-card">
-          <div class="element-head">
-            <span class="element-no mono">03</span>
-            <div>
-              <h2>要不要微调</h2>
-              <p>在档案基础上，只调这一次。</p>
-            </div>
-            <el-switch v-model="tuningEnabled" />
-          </div>
-
-          <TuningSliders v-if="tuningEnabled" v-model="tuning" />
-          <p v-else class="tuning-off-note">
-            微调关闭。滑块不会显示，也不会写入提示词；生成将严格按档案本身的特征来。
-          </p>
-        </section>
-
-        <section class="control-card paper-card">
-          <div class="element-head">
-            <span class="element-no mono">04</span>
-            <div>
-              <h2>发到哪个平台</h2>
-              <p>平台决定篇幅和写法。</p>
-            </div>
-          </div>
-
-          <div class="platform-grid">
-            <button
-              v-for="platform in platforms"
-              :key="platform.key"
-              type="button"
-              class="platform-card"
-              :class="{ active: selectedPlatform === platform.key }"
-              @click="selectedPlatform = platform.key"
-            >
-              <el-icon><component :is="platformIcon(platform.key)" /></el-icon>
-              <strong>{{ platform.label }}</strong>
-              <span>{{ platform.tagline }}</span>
-            </button>
-          </div>
-          <p v-if="currentPlatform" class="platform-description">
-            {{ currentPlatform.description }}
-            <b class="mono">{{ currentPlatform.minChars }}–{{ currentPlatform.maxChars }} 字</b>
-          </p>
-
-          <el-button
-            type="primary"
-            size="large"
-            class="generate-btn"
-            :loading="generating"
-            @click="leftGenerate"
+        <div class="profile-options dialog-scroll">
+          <button
+            type="button"
+            class="profile-option none-option"
+            :class="{ active: selectedProfileId === null }"
+            @click="selectedProfileId = null"
           >
-            <el-icon v-if="!generating"><EditPen /></el-icon>
-            {{
-              generating
-                ? (content ? '正在生成候选稿…' : '正在按你的笔迹写…')
-                : (content ? '生成侧边候选稿' : '生成这一篇')
-            }}
-          </el-button>
-          <p class="generate-note">
-            <template v-if="content">
-              写作台已有内容；本次生成会放在侧边，不会覆盖当前文章。
-            </template>
-            <template v-else>
-              每次生成都会真实调用一次模型；未配置 LLM_API_KEY 时会直接报错，不会返回预置文案。
-            </template>
-          </p>
-        </section>
-      </aside>
+            <span class="radio-dot" />
+            <div class="option-copy">
+              <div class="option-title">
+                <strong>不使用档案</strong>
+                <span class="option-tag">对照组</span>
+              </div>
+              <p>普通 AI 直接写。检测时只跑通用 AI 味，不计算个人贴合度。</p>
+            </div>
+          </button>
 
-      <main ref="resultRef" class="desk-area">
-        <div class="desk-main">
-          <el-alert
-            v-if="errorState"
-            class="result-error"
-            :title="errorState.title"
-            type="error"
-            show-icon
-            :closable="false"
+          <button
+            v-for="profile in profiles"
+            :key="profile.id"
+            type="button"
+            class="profile-option"
+            :class="{ active: selectedProfileId === profile.id }"
+            @click="selectedProfileId = profile.id"
           >
-            <p class="error-message">{{ errorState.message }}</p>
-          </el-alert>
-
-          <section v-if="generating && !content" class="generating-card paper-card">
-            <div class="writing-animation">
-              <span class="seal writing-seal">写</span>
-              <span class="writing-line line-one" />
-              <span class="writing-line line-two" />
-              <span class="writing-line line-three" />
+            <span class="radio-dot" />
+            <div class="option-copy">
+              <div class="option-title">
+                <strong>{{ profile.name }}</strong>
+                <span class="option-meta mono">
+                  {{ profile.stats?.avgSentenceLength || '—' }} 字/句
+                </span>
+              </div>
+              <p>{{ profile.semantic?.summary || '表达档案' }}</p>
+              <div v-if="profile.semantic?.catchphrases?.length" class="option-phrases">
+                <span v-for="phrase in profile.semantic.catchphrases.slice(0, 3)" :key="phrase">
+                  {{ phrase }}
+                </span>
+              </div>
             </div>
-            <p class="eyebrow plain">Composing</p>
-            <h2>正在按你的笔迹落笔</h2>
-            <p class="generating-sub">
-              {{ pendingMeta.profileName }} · {{ pendingMeta.platformLabel }}
-            </p>
-            <div class="generation-stages">
-              <span
-                v-for="(stage, index) in generationStages"
-                :key="stage"
-                :class="{ active: index === generationStage, done: index < generationStage }"
-              >
-                <i />
-                {{ stage }}
-              </span>
-            </div>
-            <p class="generating-time">通常需要 10–40 秒，请稍候。</p>
-          </section>
-
-          <template v-else>
-            <ArticleEditor
-              :model-value="content"
-              :title="articleTitle"
-              :platform-label="editorPlatformLabel"
-              :profile-name="editorProfileName"
-              :created-at="generation?.createdAt || null"
-              :word-status-text="wordStatusText"
-              :word-status-class="wordStatusClass"
-              :saving="saving"
-              :saved="Boolean(savedArticleId)"
-              :saved-at="savedAt"
-              :dirty="isDirty"
-              :scoring="scoring"
-              :has-score="Boolean(score)"
-              :generating="generating"
-              :can-regenerate="canRegenerate"
-              :can-save="canSave"
-              @update:model-value="handleContentUpdate"
-              @update:title="articleTitle = $event"
-              @save="saveArticle"
-              @regenerate="regenerate"
-              @score="runScore"
-              @copy="copyContent"
-              @new="startNew"
-            />
-
-            <ScorePanel
-              v-if="score"
-              :score="score"
-              :profile-name="editorProfileName"
-            />
-          </template>
+          </button>
         </div>
 
-        <aside class="desk-side">
-          <CandidatePanel
-            v-if="candidate"
-            :candidate="candidate"
-            :current-score="score?.score ?? null"
-            @accept="acceptCandidate"
-            @dismiss="dismissCandidate"
-          />
+        <div v-if="!profiles.length" class="no-profile-note">
+          还没有档案。先去
+          <router-link :to="{ name: 'profile-create' }">提取一份</router-link>
+          ，或直接使用“不使用档案”作为对照组。
+        </div>
+      </div>
 
-          <AssistantPanel
-            v-model="assistantDraft"
-            :messages="assistantMessages"
-            :loading="assistantLoading"
-            @send="sendAssistant"
-            @clear="clearAssistant"
-          />
-        </aside>
-      </main>
-    </div>
+      <div v-else-if="activeStep === 'tuning'" class="dialog-section">
+        <div class="tuning-switch-row">
+          <div>
+            <strong>启用本次微调</strong>
+            <p>只影响这一次生成，不会改动档案。关闭时严格按档案本身的特征来。</p>
+          </div>
+          <el-switch v-model="tuningEnabled" />
+        </div>
+
+        <TuningSliders v-if="tuningEnabled" v-model="tuning" />
+        <p v-else class="tuning-off-note">
+          微调关闭。滑块不会显示，也不会写入提示词；生成将严格按档案本身的特征来。
+        </p>
+      </div>
+
+      <div v-else class="dialog-section">
+        <div class="platform-grid">
+          <button
+            v-for="platform in platforms"
+            :key="platform.key"
+            type="button"
+            class="platform-card"
+            :class="{ active: selectedPlatform === platform.key }"
+            @click="selectedPlatform = platform.key"
+          >
+            <el-icon><component :is="platformIcon(platform.key)" /></el-icon>
+            <strong>{{ platform.label }}</strong>
+            <span>{{ platform.tagline }}</span>
+          </button>
+        </div>
+        <p v-if="currentPlatform" class="platform-description">
+          {{ currentPlatform.description }}
+          <b class="mono">{{ currentPlatform.minChars }}–{{ currentPlatform.maxChars }} 字</b>
+        </p>
+      </div>
+
+      <template #footer>
+        <div class="dialog-foot">
+          <el-button
+            v-if="activeStep === 'topic' && demoData"
+            text
+            size="small"
+            @click="applyDemo"
+          >
+            <el-icon><MagicStick /></el-icon>
+            载入演示设置
+          </el-button>
+          <span v-else />
+          <el-button type="primary" @click="stepDialogVisible = false">完成</el-button>
+        </div>
+      </template>
+    </el-dialog>
+
+    <el-dialog
+      v-model="scoreDialogVisible"
+      title="评分详情"
+      width="880px"
+      class="score-dialog"
+    >
+      <ScorePanel v-if="score" :score="score" :profile-name="editorProfileName" />
+    </el-dialog>
   </div>
 </template>
 
@@ -291,48 +301,120 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
-import { ChatDotRound, Star, VideoCamera } from '@element-plus/icons-vue';
+import {
+  ChatDotRound,
+  Collection,
+  EditPen,
+  MagicStick,
+  Position,
+  Star,
+  VideoCamera,
+} from '@element-plus/icons-vue';
 import TuningSliders from '../components/TuningSliders.vue';
 import ScorePanel from '../components/ScorePanel.vue';
 import ArticleEditor from '../components/ArticleEditor.vue';
 import CandidatePanel from '../components/CandidatePanel.vue';
-import AssistantPanel from '../components/AssistantPanel.vue';
-import { articleApi, assistantApi, metaApi, profileApi, writingApi } from '../api';
-import { countChars } from '../utils/format';
+import { articleApi, metaApi, profileApi, writingApi } from '../api';
+import { countChars, scoreTone } from '../utils/format';
 
 const route = useRoute();
 const router = useRouter();
 
+const DEFAULT_TUNING = { formality: 50, detail: 50, emotion: 50, assertiveness: 50 };
+
+// 写作台四项设置各占一个 localStorage 键，换页面回来时自动恢复。
+// 正文和标题另存一份草稿，点「保存文章」之前也不会丢。
+const STORAGE_KEYS = {
+  topic: 'biji_write_topic',
+  profile: 'biji_write_profile',
+  tuning: 'biji_write_tuning',
+  platform: 'biji_write_platform',
+  draft: 'biji_write_draft',
+};
+
+function readStored(key, fallback) {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw == null ? fallback : JSON.parse(raw);
+  } catch {
+    return fallback;
+  }
+}
+
+function writeStored(key, value) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // 浏览器禁用存储时，写作台仍可正常使用。
+  }
+}
+
+function restoreTuning() {
+  const saved = readStored(STORAGE_KEYS.tuning, null);
+  const values = saved && typeof saved === 'object' ? saved.values || {} : {};
+  const restored = { ...DEFAULT_TUNING };
+  for (const key of Object.keys(DEFAULT_TUNING)) {
+    const value = Number(values[key]);
+    if (Number.isFinite(value)) restored[key] = Math.min(100, Math.max(0, value));
+  }
+  return { enabled: Boolean(saved?.enabled), values: restored };
+}
+
+function restoreDraft() {
+  const saved = readStored(STORAGE_KEYS.draft, null);
+  if (!saved || typeof saved !== 'object') return null;
+  const content = typeof saved.content === 'string' ? saved.content.slice(0, 50000) : '';
+  const title = typeof saved.title === 'string' ? saved.title.slice(0, 200) : '';
+  if (!content.trim() && !title.trim()) return null;
+  const articleId = Number(saved.articleId);
+  return {
+    content,
+    title,
+    articleId: Number.isInteger(articleId) && articleId > 0 ? articleId : null,
+    savedAt: typeof saved.savedAt === 'string' ? saved.savedAt : null,
+    lastSavedContent: typeof saved.lastSavedContent === 'string' ? saved.lastSavedContent : '',
+    lastSavedTitle: typeof saved.lastSavedTitle === 'string' ? saved.lastSavedTitle : '',
+    generation:
+      saved.generation && typeof saved.generation === 'object' ? saved.generation : null,
+  };
+}
+
+const savedTuning = restoreTuning();
+const savedProfile = Number(readStored(STORAGE_KEYS.profile, null));
+const savedDraft = restoreDraft();
+
 const platforms = ref([]);
 const profiles = ref([]);
 const demoData = ref(null);
-const topic = ref('');
-const selectedPlatform = ref('wechat');
-const selectedProfileId = ref(null);
-const tuningEnabled = ref(false);
-const tuning = ref({ formality: 50, detail: 50, emotion: 50, assertiveness: 50 });
+const topic = ref(String(readStored(STORAGE_KEYS.topic, '') || '').slice(0, 5000));
+const selectedPlatform = ref(String(readStored(STORAGE_KEYS.platform, 'wechat') || 'wechat'));
+const selectedProfileId = ref(
+  Number.isInteger(savedProfile) && savedProfile > 0 ? savedProfile : null
+);
+const tuningEnabled = ref(savedTuning.enabled);
+const tuning = ref(savedTuning.values);
 
 const generating = ref(false);
 const generationStage = ref(0);
 const scoring = ref(false);
-const content = ref('');
-const articleTitle = ref('');
-const generation = ref(null);
+const content = ref(savedDraft?.content || '');
+const articleTitle = ref(savedDraft?.title || '');
+const generation = ref(savedDraft?.generation || null);
 const score = ref(null);
 const candidate = ref(null);
 const errorState = ref(null);
 const resultRef = ref(null);
 const pendingMeta = ref({ profileName: '不使用档案', platformLabel: '' });
 
-const savedArticleId = ref(null);
-const savedAt = ref(null);
-const lastSavedContent = ref('');
-const lastSavedTitle = ref('');
+const savedArticleId = ref(savedDraft?.articleId || null);
+const savedAt = ref(savedDraft?.savedAt || null);
+const lastSavedContent = ref(savedDraft?.lastSavedContent || '');
+const lastSavedTitle = ref(savedDraft?.lastSavedTitle || '');
 const saving = ref(false);
 
-const assistantMessages = ref([]);
-const assistantDraft = ref('');
-const assistantLoading = ref(false);
+const stepDialogVisible = ref(false);
+const activeStep = ref('topic');
+const scoreDialogVisible = ref(false);
 
 let stageTimer = null;
 let candidateScoreToken = 0;
@@ -347,6 +429,20 @@ const platformIconMap = {
   wechat: ChatDotRound,
   xiaohongshu: Star,
   douyin: VideoCamera,
+};
+
+const stepIconMap = {
+  topic: EditPen,
+  profile: Collection,
+  tuning: MagicStick,
+  platform: Position,
+};
+
+const dialogTitles = {
+  topic: '01 · 写什么',
+  profile: '02 · 用哪份笔迹',
+  tuning: '03 · 要不要微调',
+  platform: '04 · 发布到哪个平台',
 };
 
 const currentPlatform = computed(() =>
@@ -364,6 +460,65 @@ const editorPlatformLabel = computed(
 const editorProfileName = computed(
   () => generation.value?.profileName || profileLabel(selectedProfileId.value)
 );
+const dialogTitle = computed(() => dialogTitles[activeStep.value] || '');
+const generateNote = computed(() =>
+  content.value
+    ? '写作台已有内容；本次生成会放在侧边，不会覆盖当前文章。'
+    : '每次生成都会真实调用一次模型；未配置 LLM_API_KEY 时会直接报错，不会返回预置文案。'
+);
+const scoreOrbHint = computed(() => {
+  if (scoring.value) return '正在检测…';
+  if (!content.value.trim()) return '写点内容后才能检测';
+  return score.value ? `像不像你 ${score.value.score} 分 · 查看详情` : '检测像不像你';
+});
+const scoreOrbStyle = computed(() => {
+  if (!score.value) return {};
+  const tone = scoreTone(score.value.score);
+  const deg = Math.min(100, Math.max(0, Number(score.value.score) || 0)) * 3.6;
+  return {
+    background: `conic-gradient(${tone.color} ${deg}deg, rgba(28, 27, 24, 0.1) 0deg)`,
+  };
+});
+
+const steps = computed(() => [
+  {
+    key: 'topic',
+    no: '01',
+    title: '写什么',
+    icon: stepIconMap.topic,
+    summary: topic.value.trim() || '还没有写主题',
+    filled: Boolean(topic.value.trim()),
+  },
+  {
+    key: 'profile',
+    no: '02',
+    title: '用哪份笔迹',
+    icon: stepIconMap.profile,
+    summary: selectedProfileId.value
+      ? profileLabel(selectedProfileId.value)
+      : '不使用档案 · 普通 AI',
+    filled: Boolean(selectedProfileId.value),
+  },
+  {
+    key: 'tuning',
+    no: '03',
+    title: '要不要微调',
+    icon: stepIconMap.tuning,
+    summary: tuningEnabled.value ? '已启用 · 4 项参数' : '未启用 · 按档案原样写',
+    filled: tuningEnabled.value,
+  },
+  {
+    key: 'platform',
+    no: '04',
+    title: '发布到哪个平台',
+    icon: stepIconMap.platform,
+    summary: currentPlatform.value
+      ? `${currentPlatform.value.label} · ${currentPlatform.value.minChars}–${currentPlatform.value.maxChars} 字`
+      : '还没有选择平台',
+    filled: Boolean(currentPlatform.value),
+  },
+]);
+
 const isDirty = computed(() => {
   if (!content.value && !articleTitle.value.trim()) return false;
   return (
@@ -397,6 +552,11 @@ const wordStatusText = computed(() => {
   }
   return '篇幅符合平台要求';
 });
+
+function openStep(key) {
+  activeStep.value = key;
+  stepDialogVisible.value = true;
+}
 
 function platformIcon(key) {
   return platformIconMap[key] || ChatDotRound;
@@ -443,6 +603,16 @@ async function load() {
     platforms.value = meta.platforms || [];
     profiles.value = profileList.profiles || [];
     demoData.value = demo;
+
+    if (!platforms.value.some((platform) => platform.key === selectedPlatform.value)) {
+      selectedPlatform.value = platforms.value[0]?.key || 'wechat';
+    }
+    if (
+      selectedProfileId.value &&
+      !profiles.value.some((profile) => profile.id === selectedProfileId.value)
+    ) {
+      selectedProfileId.value = null;
+    }
 
     const preferred = Number(route.query.profile);
     if (preferred && profiles.value.some((profile) => profile.id === preferred)) {
@@ -512,6 +682,7 @@ async function generate(options = {}) {
   const payload = buildGenerationPayload({ regenerate });
   if (!payload.topic) {
     ElMessage.warning('先写下这次想写什么');
+    openStep('topic');
     return;
   }
   if (!platforms.value.length) {
@@ -664,6 +835,15 @@ function handleContentUpdate(value) {
   if (score.value) score.value = null;
 }
 
+function handleScoreOrb() {
+  if (scoring.value) return;
+  if (score.value) {
+    scoreDialogVisible.value = true;
+    return;
+  }
+  runScore();
+}
+
 async function runScore() {
   if (!content.value.trim() || scoring.value) return;
   const scoredContent = content.value;
@@ -784,6 +964,7 @@ async function startNew() {
   generation.value = null;
   errorState.value = null;
   if (route.query.article) await router.replace({ name: 'write' });
+  flushDraft();
   ElMessage.success('写作台已清空，可以写新的了');
 }
 
@@ -805,42 +986,42 @@ async function copyContent() {
   }
 }
 
-async function sendAssistant(question) {
-  const text = String(question || '').trim();
-  if (!text || assistantLoading.value) return;
-  const userMessage = { role: 'user', content: text };
-  const history = [...assistantMessages.value, userMessage].slice(-20);
-  assistantMessages.value = history;
-  assistantDraft.value = '';
-  assistantLoading.value = true;
-  try {
-    const data = await assistantApi.chat(history);
-    assistantMessages.value = [
-      ...assistantMessages.value,
-      { role: 'assistant', content: data.reply },
-    ];
-  } catch (error) {
-    assistantMessages.value = assistantMessages.value.slice(0, -1);
-    assistantDraft.value = text;
-    ElMessage.error(error.message || '助手暂时没有回应');
-  } finally {
-    assistantLoading.value = false;
-  }
+let draftTimer = null;
+
+function draftSnapshot() {
+  return {
+    title: articleTitle.value,
+    content: content.value,
+    articleId: savedArticleId.value,
+    savedAt: savedAt.value,
+    lastSavedContent: lastSavedContent.value,
+    lastSavedTitle: lastSavedTitle.value,
+    generation: generation.value,
+  };
 }
 
-async function clearAssistant() {
-  if (!assistantMessages.value.length || assistantLoading.value) return;
-  try {
-    await ElMessageBox.confirm('清空当前对话？', '清空对话', {
-      confirmButtonText: '清空',
-      cancelButtonText: '取消',
-      type: 'warning',
-    });
-  } catch {
+function flushDraft() {
+  window.clearTimeout(draftTimer);
+  draftTimer = null;
+  const draft = draftSnapshot();
+  if (!draft.content.trim() && !draft.title.trim()) {
+    try {
+      localStorage.removeItem(STORAGE_KEYS.draft);
+    } catch {
+      // 浏览器禁用存储时忽略即可。
+    }
     return;
   }
-  assistantMessages.value = [];
-  assistantDraft.value = '';
+  writeStored(STORAGE_KEYS.draft, draft);
+}
+
+function queueDraftWrite() {
+  window.clearTimeout(draftTimer);
+  draftTimer = window.setTimeout(flushDraft, 300);
+}
+
+function handleBeforeUnload() {
+  flushDraft();
 }
 
 watch(
@@ -852,130 +1033,337 @@ watch(
   }
 );
 
-onMounted(load);
-onBeforeUnmount(stopStageTicker);
+watch(topic, (value) => writeStored(STORAGE_KEYS.topic, value));
+watch(selectedProfileId, (value) => writeStored(STORAGE_KEYS.profile, value));
+watch(selectedPlatform, (value) => writeStored(STORAGE_KEYS.platform, value));
+watch(
+  [tuningEnabled, tuning],
+  () => {
+    writeStored(STORAGE_KEYS.tuning, {
+      enabled: tuningEnabled.value,
+      values: { ...tuning.value },
+    });
+  },
+  { deep: true }
+);
+watch(score, (value) => {
+  if (!value) scoreDialogVisible.value = false;
+});
+watch(
+  [
+    content,
+    articleTitle,
+    savedArticleId,
+    savedAt,
+    lastSavedContent,
+    lastSavedTitle,
+    generation,
+  ],
+  queueDraftWrite,
+  { deep: true }
+);
+
+onMounted(() => {
+  load();
+  window.addEventListener('beforeunload', handleBeforeUnload);
+});
+onBeforeUnmount(() => {
+  stopStageTicker();
+  flushDraft();
+  window.removeEventListener('beforeunload', handleBeforeUnload);
+});
 </script>
 
 <style scoped>
 .write-page {
   max-width: 1560px;
-  padding-top: 40px;
+  padding-top: 30px;
 }
 
-.write-header {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 30px;
-  margin-bottom: 28px;
+.setup-strip {
+  margin-bottom: 18px;
+  padding: 18px 20px 16px;
 }
 
-.write-header .page-title {
-  font-size: clamp(30px, 3.5vw, 43px);
-}
-
-.header-side {
+.strip-head {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 8px;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.strip-heading {
+  min-width: 0;
+}
+
+.strip-title {
+  margin-top: 6px;
+  font-size: clamp(20px, 2.2vw, 27px);
+  letter-spacing: -0.03em;
+  line-height: 1.22;
+}
+
+.strip-actions {
+  display: flex;
+  align-items: center;
   flex: none;
+  gap: 10px;
 }
 
-.write-layout {
-  display: grid;
-  grid-template-columns: 340px minmax(0, 1fr);
-  gap: 22px;
-  align-items: start;
+.score-orb {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 48px;
+  height: 48px;
+  padding: 3px;
+  border: 1px dashed var(--line-strong);
+  border-radius: 50%;
+  background: rgba(255, 253, 248, 0.7);
+  cursor: pointer;
+  transition: border-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
 }
 
-.control-panel {
-  position: sticky;
-  top: 22px;
+.score-orb:hover:not(:disabled) {
+  border-color: var(--vermilion);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-sm);
+}
+
+.score-orb:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.score-orb.has-score {
+  border-color: transparent;
+}
+
+.score-orb.scoring {
+  border-style: solid;
+  border-color: var(--line-strong);
+  opacity: 1;
+}
+
+.score-orb-inner {
   display: flex;
   flex-direction: column;
-  gap: 13px;
-  max-height: calc(100vh - 44px);
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: var(--paper-bright);
+  box-shadow: inset 0 0 0 1px var(--line);
+  color: var(--ink);
+}
+
+.score-orb.has-score .score-orb-inner {
+  box-shadow: none;
+}
+
+.score-orb-inner strong {
+  font-family: var(--font-serif);
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.score-orb-inner span {
+  margin-top: 1px;
+  color: var(--muted-soft);
+  font-size: 8px;
+  line-height: 1.2;
+}
+
+.score-orb-inner .el-icon {
+  color: var(--muted);
+  font-size: 15px;
+}
+
+.generate-btn {
+  flex: none;
+  height: 42px;
+  padding: 0 24px;
+  letter-spacing: 0.02em;
+}
+
+.step-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 9px;
+  margin-top: 15px;
+}
+
+.step-card {
+  min-width: 0;
+  padding: 10px 12px 11px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: rgba(255, 253, 248, 0.42);
+  cursor: pointer;
+  transition: border-color 0.2s ease, background-color 0.2s ease;
+}
+
+.step-card:hover {
+  border-color: var(--line-strong);
+  background: rgba(255, 253, 248, 0.8);
+}
+
+.step-card.filled {
+  border-color: rgba(185, 65, 43, 0.18);
+}
+
+.step-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.step-no {
+  flex: none;
+  color: var(--vermilion);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.step-head h2 {
+  overflow: hidden;
+  font-size: 13px;
+  letter-spacing: -0.01em;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.step-edit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 24px;
+  height: 24px;
+  margin-left: auto;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: rgba(255, 253, 248, 0.8);
+  color: var(--muted);
+  cursor: pointer;
+  transition: color 0.2s ease, border-color 0.2s ease, background-color 0.2s ease;
+}
+
+.step-edit:hover,
+.step-edit:focus-visible {
+  border-color: var(--vermilion);
+  background: var(--vermilion-soft);
+  color: var(--vermilion);
+  outline: none;
+}
+
+.step-edit .el-icon {
+  font-size: 12px;
+}
+
+.step-summary {
+  margin-top: 7px;
+  overflow: hidden;
+  color: var(--ink-soft);
+  font-size: 10px;
+  line-height: 1.5;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.step-summary.empty {
+  color: var(--muted-soft);
+}
+
+.desk-area {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+  min-width: 0;
+  min-height: 560px;
+  scroll-margin-top: 20px;
+}
+
+.desk-area.with-candidate {
+  grid-template-columns: minmax(0, 1fr) 340px;
+}
+
+.desk-main {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+.desk-side {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+.result-error {
+  border-radius: 6px;
+}
+
+.error-message {
+  margin-top: 4px;
+  font-size: 11.5px;
+  line-height: 1.7;
+}
+
+.step-dialog {
+  max-width: 94vw;
+}
+
+.step-dialog :deep(.el-dialog__body) {
+  padding: 6px 22px 12px;
+}
+
+.score-dialog {
+  max-width: 94vw;
+}
+
+.score-dialog :deep(.el-dialog__body) {
+  padding: 4px 18px 16px;
+}
+
+.dialog-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.dialog-hint {
+  color: var(--muted-soft);
+  font-size: 10.5px;
+  line-height: 1.7;
+}
+
+.dialog-scroll {
+  max-height: 380px;
   overflow-y: auto;
   padding-right: 4px;
 }
 
-.control-panel::-webkit-scrollbar {
-  width: 5px;
-}
-
-.control-card {
-  padding: 20px 20px 18px;
-}
-
-.element-head {
+.dialog-foot {
   display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  margin-bottom: 14px;
-}
-
-.element-no {
-  flex: none;
-  padding-top: 3px;
-  color: var(--vermilion);
-  font-size: 9.5px;
-  font-weight: 600;
-}
-
-.element-head h2 {
-  font-size: 16px;
-  letter-spacing: -0.015em;
-}
-
-.element-head p {
-  margin-top: 3px;
-  color: var(--muted-soft);
-  font-size: 9.5px;
-  line-height: 1.5;
-}
-
-.element-head > .el-switch {
-  margin-left: auto;
-  margin-top: 4px;
-}
-
-.char-counter {
-  margin-left: auto;
-  padding-top: 3px;
-  color: var(--muted-soft);
-  font-size: 8.5px;
-  white-space: nowrap;
-}
-
-.topic-hint {
-  display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  margin-top: 9px;
-}
-
-.topic-hint > span {
-  color: var(--muted-soft);
-  font-size: 9px;
-  line-height: 1.6;
-}
-
-.demo-topic-btn {
-  flex: none;
-  padding: 0;
-  font-size: 9px;
+  gap: 12px;
+  width: 100%;
 }
 
 .profile-options {
   display: flex;
   flex-direction: column;
   gap: 7px;
-  max-height: 268px;
-  overflow-y: auto;
-  padding-right: 3px;
 }
 
 .profile-options::-webkit-scrollbar {
@@ -1095,6 +1483,35 @@ onBeforeUnmount(stopStageTicker);
   text-underline-offset: 2px;
 }
 
+.tuning-switch-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 13px 15px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: rgba(255, 253, 248, 0.55);
+}
+
+.tuning-switch-row strong {
+  font-family: var(--font-serif);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.tuning-switch-row p {
+  margin-top: 4px;
+  color: var(--muted-soft);
+  font-size: 10px;
+  line-height: 1.6;
+}
+
+.tuning-switch-row .el-switch {
+  flex: none;
+  margin-top: 3px;
+}
+
 .tuning-off-note {
   padding: 12px 13px;
   border: 1px dashed var(--line);
@@ -1107,15 +1524,15 @@ onBeforeUnmount(stopStageTicker);
 .platform-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 7px;
+  gap: 8px;
 }
 
 .platform-card {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
-  padding: 11px 5px 9px;
+  gap: 5px;
+  padding: 15px 8px 13px;
   border: 1px solid var(--line);
   border-radius: 5px;
   background: rgba(255, 253, 248, 0.4);
@@ -1136,7 +1553,7 @@ onBeforeUnmount(stopStageTicker);
 
 .platform-card .el-icon {
   color: var(--muted);
-  font-size: 16px;
+  font-size: 18px;
 }
 
 .platform-card.active .el-icon {
@@ -1145,21 +1562,20 @@ onBeforeUnmount(stopStageTicker);
 
 .platform-card strong {
   font-family: var(--font-serif);
-  font-size: 10.5px;
+  font-size: 12px;
   font-weight: 600;
 }
 
 .platform-card span {
   color: var(--muted-soft);
-  font-size: 7.5px;
+  font-size: 8.5px;
   line-height: 1.35;
 }
 
 .platform-description {
-  margin-top: 10px;
   color: var(--muted);
-  font-size: 9.5px;
-  line-height: 1.6;
+  font-size: 10.5px;
+  line-height: 1.7;
 }
 
 .platform-description b {
@@ -1168,61 +1584,12 @@ onBeforeUnmount(stopStageTicker);
   font-weight: 500;
 }
 
-.generate-btn {
-  width: 100%;
-  height: 45px;
-  margin-top: 15px;
-  letter-spacing: 0.02em;
-}
-
-.generate-note {
-  margin-top: 8px;
-  color: var(--muted-soft);
-  font-size: 8.5px;
-  line-height: 1.55;
-  text-align: center;
-}
-
-.desk-area {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 350px;
-  gap: 18px;
-  align-items: start;
-  min-width: 0;
-  min-height: 620px;
-  scroll-margin-top: 20px;
-}
-
-.desk-main {
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
-  min-width: 0;
-}
-
-.desk-side {
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
-  min-width: 0;
-}
-
-.result-error {
-  border-radius: 6px;
-}
-
-.error-message {
-  margin-top: 4px;
-  font-size: 11.5px;
-  line-height: 1.7;
-}
-
 .generating-card {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  min-height: 620px;
+  min-height: 560px;
   padding: 50px 44px;
   text-align: center;
   background:
@@ -1371,57 +1738,32 @@ onBeforeUnmount(stopStageTicker);
   font-size: 9px;
 }
 
-@media (max-width: 1700px) {
-  .write-layout {
-    grid-template-columns: 1fr;
-  }
-
-  .control-panel {
-    position: static;
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 13px;
-    max-height: none;
-    overflow: visible;
-    padding-right: 0;
-  }
-}
-
 @media (max-width: 1250px) {
-  .desk-area {
+  .desk-area.with-candidate {
     grid-template-columns: 1fr;
-  }
-
-  .desk-side {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-    align-items: start;
   }
 }
 
-@media (max-width: 900px) {
-  .control-panel {
-    grid-template-columns: 1fr;
-  }
-
-  .desk-side {
-    grid-template-columns: 1fr;
-  }
-
-  .generating-card {
-    min-height: 460px;
+@media (max-width: 980px) {
+  .step-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
 @media (max-width: 720px) {
-  .write-header {
+  .strip-head {
     flex-direction: column;
-    align-items: flex-start;
-    gap: 16px;
+    align-items: stretch;
+    gap: 14px;
   }
 
-  .header-side {
-    justify-content: flex-start;
+  .strip-actions {
+    width: 100%;
+  }
+
+  .generate-btn {
+    flex: 1;
+    width: auto;
   }
 
   .generation-stages {
@@ -1430,7 +1772,14 @@ onBeforeUnmount(stopStageTicker);
   }
 
   .generating-card {
+    min-height: 460px;
     padding: 36px 22px;
+  }
+}
+
+@media (max-width: 560px) {
+  .step-grid {
+    grid-template-columns: 1fr;
   }
 }
 </style>

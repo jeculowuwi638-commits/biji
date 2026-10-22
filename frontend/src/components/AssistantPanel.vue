@@ -1,6 +1,6 @@
 <template>
-  <section class="assistant-panel paper-card">
-    <header class="assistant-head">
+  <section class="assistant-panel paper-card" :class="{ compact }">
+    <header v-if="!hideHeader" class="assistant-head">
       <div>
         <span class="section-kicker">Writing assistant</span>
         <h3>写作助手</h3>
@@ -9,10 +9,12 @@
         text
         size="small"
         :disabled="!messages.length || loading"
+        aria-label="清空对话"
+        title="清空对话"
         @click="emit('clear')"
       >
         <el-icon><Delete /></el-icon>
-        清空对话
+        <span class="clear-text">清空对话</span>
       </el-button>
     </header>
 
@@ -24,7 +26,13 @@
     <div ref="listRef" class="message-list">
       <div v-if="!messages.length" class="assistant-empty">
         <span class="empty-mark">问</span>
-        <p>不知道一句话怎么改、开头怎么起、结尾怎么收？直接问它。</p>
+        <p>
+          {{
+            compact
+              ? '一句话怎么改、开头怎么起？直接问它。'
+              : '不知道一句话怎么改、开头怎么起、结尾怎么收？直接问它。'
+          }}
+        </p>
       </div>
 
       <div
@@ -51,7 +59,7 @@
       <el-input
         :model-value="modelValue"
         type="textarea"
-        :autosize="{ minRows: 2, maxRows: 5 }"
+        :autosize="{ minRows: compact ? 1 : 2, maxRows: compact ? 3 : 5 }"
         resize="none"
         maxlength="4000"
         placeholder="比如：这句话太长了，帮我拆成两句。"
@@ -81,6 +89,8 @@ const props = defineProps({
   modelValue: { type: String, default: '' },
   messages: { type: Array, default: () => [] },
   loading: { type: Boolean, default: false },
+  compact: { type: Boolean, default: false },
+  hideHeader: { type: Boolean, default: false },
 });
 const emit = defineEmits(['update:modelValue', 'send', 'clear']);
 
@@ -266,6 +276,101 @@ watch(
 .input-hint {
   color: var(--muted-soft);
   font-size: 8.5px;
+}
+
+/* ---------- 侧边栏内的紧凑版 ---------- */
+
+.assistant-panel.compact {
+  height: 100%;
+  min-height: 0;
+  padding: 12px 12px 10px;
+}
+
+.assistant-panel.compact .assistant-head {
+  padding-bottom: 8px;
+}
+
+.assistant-panel.compact .assistant-head .section-kicker {
+  display: none;
+}
+
+.assistant-panel.compact .assistant-head h3 {
+  margin-top: 0;
+  font-size: 12.5px;
+}
+
+.assistant-panel.compact .clear-text {
+  display: none;
+}
+
+.assistant-panel.compact .assistant-head .el-button {
+  padding: 2px;
+}
+
+.assistant-panel.compact .assistant-note {
+  display: none;
+}
+
+.assistant-panel.compact .message-list {
+  flex: 1;
+  height: auto;
+  min-height: 80px;
+  margin-top: 9px;
+  gap: 9px;
+}
+
+.assistant-panel.compact .assistant-empty {
+  padding: 10px 4px;
+}
+
+.assistant-panel.compact .assistant-empty .empty-mark {
+  width: 28px;
+  height: 28px;
+  font-size: 13px;
+}
+
+.assistant-panel.compact .assistant-empty p {
+  max-width: 160px;
+  margin-top: 8px;
+  font-size: 9.5px;
+  line-height: 1.65;
+}
+
+.assistant-panel.compact .message-role {
+  font-size: 8px;
+}
+
+.assistant-panel.compact .bubble {
+  max-width: 100%;
+  padding: 7px 9px;
+  border-radius: 6px;
+  font-size: 10.5px;
+  line-height: 1.65;
+}
+
+.assistant-panel.compact .assistant-input {
+  margin-top: 8px;
+  padding-top: 8px;
+}
+
+.assistant-panel.compact .assistant-input :deep(.el-textarea__inner) {
+  padding: 7px 8px;
+  font-size: 10.5px;
+  line-height: 1.6;
+}
+
+.assistant-panel.compact .input-foot {
+  justify-content: stretch;
+  margin-top: 6px;
+}
+
+.assistant-panel.compact .input-hint {
+  display: none;
+}
+
+.assistant-panel.compact .input-foot .el-button {
+  width: 100%;
+  margin-left: 0;
 }
 
 @keyframes blink {
