@@ -2,8 +2,8 @@
   <section class="assistant-panel paper-card" :class="{ compact }">
     <header v-if="!hideHeader" class="assistant-head">
       <div>
-        <span class="section-kicker">Writing assistant</span>
-        <h3>写作助手</h3>
+        <span class="section-kicker">{{ kicker }}</span>
+        <h3>{{ title }}</h3>
       </div>
       <el-button
         text
@@ -18,19 +18,17 @@
       </el-button>
     </header>
 
-    <p class="assistant-note">
-      只把这段对话发给模型，不会读取你的档案或正文。需要它看某段文字时，
-      把文字贴在问题里。
-    </p>
+    <p class="assistant-note">{{ note }}</p>
 
     <div ref="listRef" class="message-list">
       <div v-if="!messages.length" class="assistant-empty">
         <span class="empty-mark">问</span>
         <p>
           {{
-            compact
+            emptyText ||
+            (compact
               ? '一句话怎么改、开头怎么起？直接问它。'
-              : '不知道一句话怎么改、开头怎么起、结尾怎么收？直接问它。'
+              : '不知道一句话怎么改、开头怎么起、结尾怎么收？直接问它。')
           }}
         </p>
       </div>
@@ -62,7 +60,7 @@
         :autosize="{ minRows: compact ? 1 : 2, maxRows: compact ? 3 : 5 }"
         resize="none"
         maxlength="4000"
-        placeholder="比如：这句话太长了，帮我拆成两句。"
+        :placeholder="placeholder"
         @update:model-value="emit('update:modelValue', $event)"
         @keydown.enter.exact.prevent="submit"
       />
@@ -91,6 +89,18 @@ const props = defineProps({
   loading: { type: Boolean, default: false },
   compact: { type: Boolean, default: false },
   hideHeader: { type: Boolean, default: false },
+  title: { type: String, default: '写作助手' },
+  kicker: { type: String, default: 'Writing assistant' },
+  note: {
+    type: String,
+    default:
+      '只把这段对话发给模型，不会读取你的档案或正文。需要它看某段文字时，把文字贴在问题里。',
+  },
+  emptyText: { type: String, default: '' },
+  placeholder: {
+    type: String,
+    default: '比如：这句话太长了，帮我拆成两句。',
+  },
 });
 const emit = defineEmits(['update:modelValue', 'send', 'clear']);
 

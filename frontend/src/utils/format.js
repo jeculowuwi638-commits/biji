@@ -2,6 +2,18 @@ export function countChars(text) {
   return Array.from(String(text || '').replace(/\s/g, '')).length;
 }
 
+export function chapterDisplayTitle(chapter) {
+  const full = String(chapter?.title || '').trim();
+  const cleaned = full
+    .replace(
+      /^第\s*[0-9０-９一二三四五六七八九十百千零〇两]+\s*[章回节卷篇][\s·:：、.．—-]*/,
+      ''
+    )
+    .replace(/^chapter\s+\d+[\s:：.．—-]*/i, '')
+    .trim();
+  return cleaned || full || '未命名章节';
+}
+
 export function formatDate(value) {
   if (!value) return '';
   const date = new Date(value);

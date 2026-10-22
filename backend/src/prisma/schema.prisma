@@ -8,26 +8,30 @@ datasource db {
 }
 
 model User {
-  id           Int          @id @default(autoincrement())
-  username     String       @unique
-  passwordHash String
-  createdAt    DateTime     @default(now())
-  profiles     Profile[]
-  generations  Generation[]
-  articles     Article[]
+  id            Int            @id @default(autoincrement())
+  username      String         @unique
+  passwordHash  String
+  createdAt     DateTime       @default(now())
+  profiles      Profile[]
+  generations   Generation[]
+  articles      Article[]
+  novels        NovelProject[]
+  novelChapters NovelChapter[]
+  storyBibles   StoryBible[]
 }
 
 model Profile {
-  id          Int          @id @default(autoincrement())
-  userId      Int
-  name        String
-  stats       Json
-  semantic    Json
-  texts       Json?
-  createdAt   DateTime     @default(now())
-  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  generations Generation[]
-  articles    Article[]
+  id            Int            @id @default(autoincrement())
+  userId        Int
+  name          String
+  stats         Json
+  semantic      Json
+  texts         Json?
+  createdAt     DateTime       @default(now())
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  generations   Generation[]
+  articles      Article[]
+  novelProjects NovelProject[]
 
   @@index([userId])
 }
@@ -64,4 +68,56 @@ model Article {
 
   @@index([userId])
   @@index([profileId])
+}
+
+model NovelProject {
+  id             Int            @id @default(autoincrement())
+  userId         Int
+  title          String         @db.VarChar(120)
+  description    String?        @db.Text
+  styleProfileId Int?
+  narrator       String         @default("third-limited") @db.VarChar(32)
+  strictSettings Boolean        @default(true)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  styleProfile   Profile?       @relation(fields: [styleProfileId], references: [id], onDelete: SetNull)
+  chapters       NovelChapter[]
+  bible          StoryBible?
+
+  @@index([userId])
+  @@index([styleProfileId])
+}
+
+model NovelChapter {
+  id        Int          @id @default(autoincrement())
+  userId    Int
+  novelId   Int
+  order     Int
+  title     String       @db.VarChar(160)
+  content   String       @db.LongText
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  novel     NovelProject @relation(fields: [novelId], references: [id], onDelete: Cascade)
+
+  @@unique([novelId, order])
+  @@index([userId])
+  @@index([novelId])
+}
+
+model StoryBible {
+  id             Int          @id @default(autoincrement())
+  userId         Int
+  novelId        Int          @unique
+  core           Json
+  corrections    Json?
+  sourceChapters Int          @default(0)
+  analyzedAt     DateTime?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  novel          NovelProject @relation(fields: [novelId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }

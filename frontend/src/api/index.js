@@ -126,6 +126,57 @@ export const assistantApi = {
   },
 };
 
+export const novelApi = {
+  meta() {
+    return api.get('/novels/meta');
+  },
+  list() {
+    return api.get('/novels');
+  },
+  create(payload) {
+    return api.post('/novels', payload);
+  },
+  detail(id) {
+    return api.get(`/novels/${id}`);
+  },
+  update(id, payload) {
+    return api.patch(`/novels/${id}`, payload);
+  },
+  remove(id) {
+    return api.delete(`/novels/${id}`);
+  },
+  chapters(id) {
+    return api.get(`/novels/${id}/chapters`);
+  },
+  chapter(id, chapterId) {
+    return api.get(`/novels/${id}/chapters/${chapterId}`);
+  },
+  addChapters(id, chapters) {
+    return api.post(`/novels/${id}/chapters`, { chapters });
+  },
+  bible(id) {
+    return api.get(`/novels/${id}/bible`);
+  },
+  analyze(id) {
+    return api.post(`/novels/${id}/analyze`);
+  },
+  addCorrection(id, payload) {
+    return api.post(`/novels/${id}/bible/corrections`, payload);
+  },
+  removeCorrection(id, noteId) {
+    return api.delete(`/novels/${id}/bible/corrections/${noteId}`);
+  },
+  continue(id, payload) {
+    return api.post(`/novels/${id}/continue`, payload);
+  },
+  consistency(id, payload) {
+    return api.post(`/novels/${id}/consistency`, payload);
+  },
+  assistant(id, messages) {
+    return api.post(`/novels/${id}/assistant`, { messages });
+  },
+};
+
 export const metaApi = {
   platforms() {
     return api.get('/meta');

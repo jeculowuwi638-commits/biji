@@ -1,5 +1,7 @@
 <template>
   <div class="page-shell write-page">
+    <WritingModeSwitch mode="article" />
+
     <section class="setup-strip paper-card">
       <div class="strip-head">
         <div class="strip-heading">
@@ -312,6 +314,7 @@ import {
 } from '@element-plus/icons-vue';
 import TuningSliders from '../components/TuningSliders.vue';
 import ScorePanel from '../components/ScorePanel.vue';
+import WritingModeSwitch from '../components/WritingModeSwitch.vue';
 import ArticleEditor from '../components/ArticleEditor.vue';
 import CandidatePanel from '../components/CandidatePanel.vue';
 import { articleApi, metaApi, profileApi, writingApi } from '../api';

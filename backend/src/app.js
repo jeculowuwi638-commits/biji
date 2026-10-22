@@ -16,6 +16,7 @@ const generateRoutes = require('./routes/generate');
 const scoreRoutes = require('./routes/score');
 const articleRoutes = require('./routes/articles');
 const assistantRoutes = require('./routes/assistant');
+const novelRoutes = require('./routes/novels');
 const metaRoutes = require('./routes/meta');
 const demoRoutes = require('./routes/demo');
 
@@ -49,6 +50,7 @@ app.use('/api/generate', generateRoutes);
 app.use('/api/score', scoreRoutes);
 app.use('/api/articles', articleRoutes);
 app.use('/api/assistant', assistantRoutes);
+app.use('/api/novels', novelRoutes);
 app.use('/api/meta', metaRoutes);
 app.use('/api/demo', demoRoutes);
 

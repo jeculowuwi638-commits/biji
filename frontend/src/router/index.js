@@ -37,6 +37,18 @@ const routes = [
     meta: { title: '写作台' },
   },
   {
+    path: '/novels',
+    name: 'novels',
+    component: () => import('../views/NovelListView.vue'),
+    meta: { title: '小说续写' },
+  },
+  {
+    path: '/novels/:id',
+    name: 'novel-workspace',
+    component: () => import('../views/NovelWorkspaceView.vue'),
+    meta: { title: '小说工作台' },
+  },
+  {
     path: '/articles',
     name: 'articles',
     component: () => import('../views/ArticleListView.vue'),

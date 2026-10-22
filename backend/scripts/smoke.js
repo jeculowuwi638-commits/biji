@@ -15,7 +15,23 @@ const {
 const { answerQuestion, buildAssistantPrompt } = require('../src/services/assistant');
 const { scoreContent } = require('../src/services/score');
 const {
+  analyzeStoryBible,
+  answerNovelQuestion,
+  appendCorrection,
+  buildContinuationPrompt,
+  buildNovelAssistantPrompt,
+  buildStoryBiblePrompt,
+  checkNovelConsistency,
+  generateNovelCandidates,
+  normalizeConsistency,
+  normalizeStoryCore,
+  parseGeneratedCandidates,
+  parseJsonLoose,
+  selectChaptersForAnalysis,
+} = require('../src/services/novel');
+const {
   DEMO_WRITING,
+  NOVEL_DEMO,
   OPINION_ARTICLES,
   WORK_PROFILE,
   LIFE_PROFILE,
@@ -61,6 +77,300 @@ function checkScoreDeterminism() {
     `  ✓ 评分确定性与问题定位 · ${score.score} 分 / ${score.issues.length} 个问题`
   );
   return score;
+}
+
+function makeNovelFixture() {
+  const chapters = NOVEL_DEMO.chapters.map((chapter, index) => ({
+    id: index + 1,
+    order: index + 1,
+    title: chapter.title,
+    content: chapter.content,
+  }));
+  const core = normalizeStoryCore(
+    {
+      summary: '林澄回到雾港追查哥哥失踪的真相，发现白塔日志和红绳都与旧案有关。',
+      characters: [
+        {
+          name: '林澄',
+          role: '调查者，失踪船员的妹妹',
+          traits: ['克制', '敏锐'],
+          knowledge: '知道哥哥在白塔留下日志；不知道周砚为什么隐瞒。',
+          status: '存活',
+          firstChapter: '第 1 章',
+        },
+      ],
+      relationships: [
+        {
+          from: '林澄',
+          to: '周砚',
+          type: '互相试探',
+          description: '周砚知道旧案内情，但没有告诉林澄全部事实。',
+          status: '紧张',
+        },
+      ],
+      places: [{ name: '白塔', description: '港口北端的旧灯塔', rules: '夜里有人定期维护' }],
+      worldRules: [
+        { name: '雾港的雾', rule: '浓雾会让灯塔光只能扫到近岸，不能照见旧船厂。' },
+      ],
+      timeline: [
+        { chapter: '第 1 章', time: '10 月 17 日晚', event: '林澄收到哥哥的旧信' },
+      ],
+      events: [{ chapter: '第 3 章', title: '白塔日志', summary: '林澄发现昨天的维护记录' }],
+      foreshadowing: [
+        { label: '第十三阶的红绳', description: '绳结是哥哥教她的双套结。', plantedChapter: '第 3 章', status: 'open' },
+        { label: '旧船厂的灯', description: '灯塔扫过时曾亮起一次。', plantedChapter: '第 3 章', status: 'open' },
+      ],
+      currentState: {
+        chapter: '第 3 章',
+        time: '10 月 18 日夜',
+        location: '白塔镜室',
+        summary: '周砚堵在镜室门口，塔下还有另一个人。',
+        conflicts: ['周砚隐瞒了什么'],
+      },
+      immutableFacts: ['林澄的哥哥没有被确认死亡。', '灯塔维护日志被林澄带走。'],
+      chapterSummaries: [
+        { chapter: '第 3 章', title: '灯塔下的红绳', summary: '林澄进入白塔，发现红绳和日志。' },
+      ],
+    },
+    { chapters }
+  );
+  const corrections = appendCorrection(
+    { notes: [] },
+    {
+      type: 'fact',
+      target: '林澄的哥哥',
+      content: '正文只说他失踪，没有确认死亡；续写不能把他写成已确认死亡。',
+    }
+  ).corrections;
+  return {
+    novel: {
+      id: 1,
+      title: '雾港来信',
+      description: '港口悬疑长篇。',
+      narrator: 'third-limited',
+      strictSettings: true,
+    },
+    chapters,
+    bible: { core, corrections, sourceChapters: chapters.length },
+    profile: null,
+  };
+}
+
+function checkNovelToleranceAndPrompts() {
+  const tolerant = parseJsonLoose(
+    '模型说明在 JSON 前后。\n```json\n{"ok": true, "list": [1, 2, 3,],}\n```\n结束。'
+  );
+  assert.strictEqual(tolerant.ok, true, '应从说明文字和代码块中提取 JSON');
+  assert.deepStrictEqual(tolerant.list, [1, 2, 3], '应容忍数组末尾多余逗号');
+
+  const body =
+    '雾从码头漫上来，她把那截红绳收进掌心，听见塔下有第二个人在数台阶。'.repeat(4);
+  const parsed = parseGeneratedCandidates(
+    `以下是候选：\n\`\`\`json\n{"candidates":[
+      {"title":"第十三阶","direction":"先发现物证","summary":"停在物证出现时","content":${JSON.stringify(body)}},
+      {"title":"镜室暗处","direction":"从周砚视角切入","summary":"周砚先开口","content":${JSON.stringify(`${body}周砚没有开灯。`)}},
+      {"title":"空稿","direction":"无效","summary":"应被过滤","content":""}
+    ],}\n\`\`\``,
+    { desiredLength: 1500 }
+  );
+  assert.strictEqual(parsed.length, 2, '应保留 2 个完整候选并过滤空稿');
+  assert.strictEqual(parsed[0].title, '第十三阶', '应解析候选标题');
+  assert.ok(parsed[0].charCount >= 80, '应统计候选正文字数');
+  assert.throws(
+    () =>
+      parseGeneratedCandidates(
+        JSON.stringify({ candidates: [{ title: '只有一个', content: body }] })
+      ),
+    (error) => error.code === 'LLM_BAD_JSON',
+    '少于 2 个完整候选时应明确报 LLM_BAD_JSON'
+  );
+
+  const fixture = makeNovelFixture();
+  const continuation = buildContinuationPrompt({
+    ...fixture,
+    requirements: '续写下一章，要求主角发现线索但不要揭露真相。',
+    plotDirection: '让物证先出现，暂时不解释',
+    targetLength: 1500,
+    narrator: 'third-limited',
+    strictSettings: true,
+  });
+  assert.strictEqual(continuation.candidateCount, 3, '常规长度应生成 3 个候选');
+  assert.ok(
+    continuation.user.includes('主角发现线索但不要揭露真相'),
+    '续写提示词应包含作者要求'
+  );
+  assert.ok(continuation.user.includes('第三人称限知'), '续写提示词应包含叙事视角');
+  assert.ok(
+    continuation.user.includes('林澄的哥哥没有被确认死亡'),
+    '续写提示词应包含作者纠正'
+  );
+  assert.ok(continuation.user.includes('【故事记忆卡】'), '续写提示词应包含故事记忆卡');
+  assert.ok(continuation.user.includes('【最近章节原文】'), '续写提示词应包含最近章节');
+
+  const longContinuation = buildContinuationPrompt({
+    ...fixture,
+    targetLength: 2000,
+    narrator: 'third-limited',
+    strictSettings: false,
+  });
+  assert.strictEqual(longContinuation.candidateCount, 2, '长稿应降到 2 个候选');
+  assert.ok(
+    longContinuation.user.includes('2 个方向明显不同'),
+    '候选数量应同步写入提示词'
+  );
+
+  const manyChapters = Array.from({ length: 30 }, (_, index) => ({
+    id: index + 1,
+    order: index + 1,
+    title: `第 ${index + 1} 章`,
+    content: `【原文-${String(index + 1).padStart(2, '0')}】${'雾'.repeat(1800)}`,
+  }));
+  const bounded = buildContinuationPrompt({
+    ...fixture,
+    chapters: manyChapters,
+    targetLength: 1200,
+    narrator: 'third-limited',
+  });
+  assert.ok(bounded.user.includes('【原文-30】'), '续写上下文应包含最新章节');
+  assert.ok(!bounded.user.includes('【原文-01】'), '续写上下文不应包含全部旧章节原文');
+  assert.ok(bounded.user.length < 50000, '续写上下文应保持在预算内');
+
+  const selected = selectChaptersForAnalysis(manyChapters);
+  assert.strictEqual(selected.length, 30, '未超过抽样上限时应覆盖全部章节');
+  const veryLong = manyChapters.concat(
+    Array.from({ length: 30 }, (_, index) => ({
+      id: index + 31,
+      order: index + 31,
+      title: `第 ${index + 31} 章`,
+      content: `【原文-${String(index + 31).padStart(2, '0')}】${'潮'.repeat(1800)}`,
+    }))
+  );
+  const sampled = selectChaptersForAnalysis(veryLong);
+  assert.strictEqual(sampled.length, 36, '超长作品应抽样 36 章');
+  assert.strictEqual(sampled[0].order, 1, '抽样必须保留开篇');
+  assert.strictEqual(sampled[sampled.length - 1].order, 60, '抽样必须保留最新章节');
+  assert.strictEqual(
+    new Set(sampled.map((chapter) => chapter.order)).size,
+    sampled.length,
+    '抽样章节不能重复'
+  );
+  const biblePrompt = buildStoryBiblePrompt({
+    novel: fixture.novel,
+    chapters: veryLong,
+    previousCore: fixture.bible.core,
+  });
+  assert.ok(biblePrompt.user.includes('全书共 60 章'), '超长作品应提示抽样覆盖范围');
+  assert.ok(biblePrompt.user.includes('【原文-60】'), '记忆卡提示词应包含最新章节原文');
+  assert.ok(biblePrompt.user.length < 90000, '记忆卡上下文应保持在预算内');
+
+  const assistantChapters = Array.from({ length: 10 }, (_, index) => ({
+    id: index + 1,
+    order: index + 1,
+    title: `第 ${index + 1} 章`,
+    content: `【原文-${String(index + 1).padStart(2, '0')}】${'灯'.repeat(2000)}`,
+  }));
+  const assistant = buildNovelAssistantPrompt({
+    ...fixture,
+    chapters: assistantChapters,
+    bible: {
+      ...fixture.bible,
+      core: normalizeStoryCore(
+        {
+          summary: fixture.bible.core.summary,
+          characters: fixture.bible.core.characters,
+          chapterSummaries: assistantChapters.map((chapter) => ({
+            chapter: `第 ${chapter.order} 章`,
+            title: chapter.title,
+            summary: `第 ${chapter.order} 章摘要`,
+          })),
+        },
+        { chapters: assistantChapters }
+      ),
+    },
+    messages: [{ role: 'user', content: '当前还有哪些未回收伏笔？' }],
+  });
+  assert.ok(assistant.system.includes('【原文-10】'), '助手应读取最近章节原文');
+  assert.ok(!assistant.system.includes('【原文-01】'), '助手不应读取全部旧章节原文');
+  assert.ok(assistant.system.includes('更早章节摘要'), '助手应使用旧章节摘要控制上下文');
+  assert.ok(
+    assistant.system.includes('不要使用 Markdown 标题'),
+    '助手提示词应要求纯文本回答'
+  );
+  assert.ok(assistant.system.length < 40000, '助手上下文应保持在预算内');
+
+  const consistency = normalizeConsistency({
+    overall: '有两处信息边界问题需要处理。',
+    dimensionScores: {
+      人物: 90,
+      relationship: 80,
+      timeline: 75,
+      'world-rule': 60,
+      伏笔: 55,
+      文风: 88,
+    },
+    issues: [
+      {
+        dimension: '世界观',
+        severity: '严重',
+        location: '第 2 段第 1 句',
+        excerpt: '浓雾里，他看见旧船厂的门牌。',
+        problem: '当前设定说浓雾中看不到旧船厂。',
+        evidence: '雾港的雾：灯塔光只能扫到近岸。',
+        suggestion: '改成只看见一盏模糊的灯。',
+      },
+    ],
+  });
+  assert.strictEqual(consistency.dimensions.length, 6, '一致性应固定输出六个维度');
+  assert.strictEqual(consistency.issues[0].dimension, 'worldRule', '应归一化维度别名');
+  assert.strictEqual(consistency.issues[0].severity, 'high', '应归一化严重程度');
+  assert.strictEqual(consistency.passed, false, '存在严重问题时应判定未通过');
+
+  const appended = appendCorrection(fixture.bible.corrections, {
+    type: 'unknown',
+    target: '白塔',
+    content: '  白塔只有一道铁门。  ',
+  });
+  assert.strictEqual(appended.corrections.notes.length, 2, '纠正应追加而非覆盖');
+  assert.strictEqual(appended.note.type, 'other', '未知纠正类型应归入 other');
+  assert.strictEqual(appended.note.content, '白塔只有一道铁门。', '纠正内容应去掉首尾空白');
+  assert.ok(
+    JSON.stringify(fixture.bible.core).includes('林澄的哥哥没有被确认死亡'),
+    '追加纠正不应改写模型提取的核心统计'
+  );
+
+  console.log(
+    '  ✓ 小说 JSON 容错 / 上下文预算 / 提示词 / 纠正追加 / 候选择优'
+  );
+}
+
+async function checkNovelNoKey() {
+  const fixture = makeNovelFixture();
+  await expectNotConfigured('小说记忆卡分析', () =>
+    analyzeStoryBible({ ...fixture, previousCore: null })
+  );
+  await expectNotConfigured('小说续写候选', () =>
+    generateNovelCandidates({
+      ...fixture,
+      requirements: '续写下一章，主角发现线索但不揭露真相。',
+      targetLength: 1200,
+      narrator: 'third-limited',
+      plotDirection: '',
+      strictSettings: true,
+    })
+  );
+  await expectNotConfigured('小说一致性检查', () =>
+    checkNovelConsistency({
+      ...fixture,
+      draft: fixture.chapters[0].content,
+      title: '线索',
+    })
+  );
+  await expectNotConfigured('小说助手问答', () =>
+    answerNovelQuestion({
+      ...fixture,
+      messages: [{ role: 'user', content: '当前还有哪些未回收伏笔？' }],
+    })
+  );
 }
 
 function checkPrompts() {
@@ -171,8 +481,12 @@ async function main() {
     answerQuestion([{ role: 'user', content: '这句话怎么改得更自然？' }])
   );
 
+  console.log('\n== 小说功能无 API Key ==');
+  await checkNovelNoKey();
+
   console.log('\n== 提示词与评分 ==');
   checkPrompts();
+  checkNovelToleranceAndPrompts();
   checkScoreDeterminism();
 
   if (failures.length) {

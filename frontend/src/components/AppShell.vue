@@ -30,6 +30,14 @@
           <span>写作台</span>
         </router-link>
         <router-link
+          to="/novels"
+          class="nav-item"
+          :class="{ active: route.path.startsWith('/novels') }"
+        >
+          <el-icon><Reading /></el-icon>
+          <span>小说续写</span>
+        </router-link>
+        <router-link
           to="/articles"
           class="nav-item"
           :class="{ active: route.path.startsWith('/articles') }"
